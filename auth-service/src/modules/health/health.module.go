@@ -1,6 +1,6 @@
 package health
 
-import "net/http"
+import "auth-service/core"
 
 // Module is the health-check module.
 type Module struct {
@@ -12,9 +12,9 @@ func New() *Module {
 	return &Module{controller: &controller{}}
 }
 
-// RegisterRoutes wires the health module's routes onto the given mux.
-// The route is restricted to GET (Go 1.22+ method patterns); other methods
-// receive a 405 Method Not Allowed. HEAD is served alongside GET automatically.
-func (m *Module) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /health", m.controller.health)
+// Controller returns the controller that owns this module's routes, satisfying
+// core.Module. Route registration lives on the controller (RegisterRoutes),
+// next to the handlers it points at.
+func (m *Module) Controller() core.Controller {
+	return m.controller
 }
