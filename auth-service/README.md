@@ -28,7 +28,7 @@ go build ./...
 
 | Method | Path      | Description                          |
 | ------ | --------- | ------------------------------------ |
-| GET    | `/health` | Liveness check. Returns service status and current UTC time. |
+| GET    | `/health` | Liveness check. Returns service status and current UTC time. Non-GET methods return `405 Method Not Allowed`. |
 
 ### `GET /health`
 
@@ -42,7 +42,7 @@ curl -s http://localhost:8080/health
 
 ## Project structure
 
-```
+```text
 auth-service/
 ├── go.mod
 ├── core/                         # shared, reusable building blocks

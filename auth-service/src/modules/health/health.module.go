@@ -13,6 +13,8 @@ func New() *Module {
 }
 
 // RegisterRoutes wires the health module's routes onto the given mux.
+// The route is restricted to GET (Go 1.22+ method patterns); other methods
+// receive a 405 Method Not Allowed. HEAD is served alongside GET automatically.
 func (m *Module) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/health", m.controller.health)
+	mux.HandleFunc("GET /health", m.controller.health)
 }

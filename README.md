@@ -20,7 +20,7 @@ go run ./src
 
 ## Layout
 
-```
+```text
 side-project-go-grpc/
 └── auth-service/     # HTTP auth service (see auth-service/README.md)
 ```
