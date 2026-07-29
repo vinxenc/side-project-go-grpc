@@ -12,13 +12,25 @@ import (
 
 	"auth-service/core"
 	"auth-service/src/modules/health"
+
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
 func main() {
 	mux := http.NewServeMux()
 
+	// Wrap the mux with Huma. Operations are registered onto the API, but the
+	// underlying mux is what the server serves (see srv.Handler below).
+	config := huma.DefaultConfig("auth-service", "1.0.0")
+	// DefaultConfig installs a SchemaLinkTransformer via CreateHooks, which
+	// decorates response bodies with a "$schema" field and adds Link headers.
+	// Drop it to keep the health payload byte-compatible: {"status","time"}.
+	config.CreateHooks = nil
+	api := humago.New(mux, config)
+
 	// Register all feature modules.
-	core.RegisterModules(mux,
+	core.RegisterModules(api,
 		health.New(),
 	)
 

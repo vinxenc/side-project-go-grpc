@@ -1,0 +1,7 @@
+// go.work makes the auth-service module (in a subdirectory) resolvable from the
+// repository root, so tools invoked at the root — e.g. `go build ./...` and
+// golangci-lint in CI — find the module instead of failing with
+// "directory prefix . does not contain main module".
+go 1.26.4
+
+use ./auth-service

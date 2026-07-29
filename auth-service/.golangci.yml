@@ -1,0 +1,11 @@
+# golangci-lint configuration for the auth-service module.
+# Lives next to go.mod so per-module tooling (local runs and CodeRabbit's
+# per-module scoping) discovers and configures the linter here.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # The "standard" set: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
