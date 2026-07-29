@@ -25,10 +25,8 @@ type Module interface {
 // Controller are skipped.
 func RegisterModules(api huma.API, modules ...Module) {
 	for _, m := range modules {
-		c := m.Controller()
-		if c == nil {
-			continue
+		if c := m.Controller(); c != nil {
+			c.RegisterRoutes(api)
 		}
-		c.RegisterRoutes(api)
 	}
 }
