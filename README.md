@@ -22,5 +22,12 @@ go run ./src
 
 ```text
 side-project-go-grpc/
-└── auth-service/     # HTTP auth service (see auth-service/README.md)
+├── auth-service/     # HTTP auth service (see auth-service/README.md)
+└── docs/             # Design references and notes
 ```
+
+## Docs
+
+- [Limen API endpoints](./docs/limen-endpoints.md) — reference notes on the
+  [thecodearcher/limen](https://github.com/thecodearcher/limen) auth library's
+  HTTP API, kept as a design reference for `auth-service`.
