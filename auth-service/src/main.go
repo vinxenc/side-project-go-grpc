@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"auth-service/core"
+	"auth-service/src/modules/auth"
 	"auth-service/src/modules/health"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -29,12 +30,20 @@ func main() {
 	config.CreateHooks = nil
 	api := humago.New(mux, config)
 
+	// Build the auth module; fail fast if limen cannot initialise (e.g. bad secret).
+	authModule, err := auth.New()
+	if err != nil {
+		log.Fatalf("auth module init failed: %v", err)
+	}
+
 	// Register all feature modules.
 	core.RegisterModules(api,
 		health.New(),
+		authModule,
 	)
 
 	addr := ":8080"
+	log.Printf("OpenAPI docs available at http://localhost%s/docs", addr)
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      mux,
