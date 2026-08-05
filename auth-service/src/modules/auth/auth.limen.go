@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -18,16 +19,37 @@ import (
 // whenever this fallback is active.
 var devSecret = []byte("0123456789abcdef0123456789abcdef")
 
+// newDatabaseAdapter selects the limen DatabaseAdapter based on the presence of
+// the DATABASE_URL environment variable:
+//   - DATABASE_URL set → opens a Postgres connection via the GORM adapter, runs
+//     idempotent schema migrations, and returns the adapter.
+//   - DATABASE_URL unset/empty → returns the in-memory adapter (current behaviour).
+//
+// The chosen backend is logged at startup so it is never silent.
+func newDatabaseAdapter() (limen.DatabaseAdapter, error) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Println("INFO: DATABASE_URL not set — using in-memory store (data lost on restart)")
+		return limenstore.NewMemoryAdapter(), nil
+	}
+
+	log.Println("INFO: DATABASE_URL set — connecting to Postgres")
+	adapter, _, err := limenstore.NewGormAdapter(context.Background(), dsn)
+	if err != nil {
+		return nil, fmt.Errorf("postgres adapter: %w", err)
+	}
+	log.Println("INFO: Postgres adapter ready, migrations applied")
+	return adapter, nil
+}
+
 // newLimen builds a fully configured limen instance (Core + credential-password
-// plugin + in-memory adapter). It reads the base URL from AUTH_BASE_URL (default
-// "http://localhost:8080") and the signing secret from LIMEN_SECRET (default
-// devSecret — see warning in resolveSecret).
+// plugin). The database adapter is chosen by newDatabaseAdapter: Postgres when
+// DATABASE_URL is set, in-memory otherwise.
 //
 // Production considerations (iteration-scope choices left as-is):
 //   - CSRF and origin checks are disabled; re-enable (WithHTTPCSRFProtection(true),
 //     WithHTTPOriginCheck(true), WithHTTPTrustedOrigins) for production.
 //   - CookieSecure is false; flip to true when serving over TLS.
-//   - Storage is in-memory; replace with a real DatabaseAdapter for persistence.
 func newLimen() (*limen.Limen, error) {
 	secret, err := resolveSecret()
 	if err != nil {
@@ -39,6 +61,11 @@ func newLimen() (*limen.Limen, error) {
 		baseURL = "http://localhost:8080"
 	}
 
+	adapter, err := newDatabaseAdapter()
+	if err != nil {
+		return nil, fmt.Errorf("limen database adapter: %w", err)
+	}
+
 	plugin := credentialpassword.New(
 		credentialpassword.WithUsernameSupport(true),
 	)
@@ -46,7 +73,7 @@ func newLimen() (*limen.Limen, error) {
 	auth, err := limen.New(&limen.Config{
 		BaseURL:  baseURL,
 		Secret:   secret,
-		Database: limenstore.NewMemoryAdapter(),
+		Database: adapter,
 		Plugins:  []limen.Plugin{plugin},
 		HTTP: limen.NewDefaultHTTPConfig(
 			limen.WithHTTPBasePath("/auth"),

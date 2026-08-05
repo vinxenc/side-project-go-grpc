@@ -1,0 +1,8 @@
+# Local environment files (never commit real secrets)
+.env
+*.env
+# ...but keep committed example templates
+!*.example.env
+
+# limen CLI schema dump
+.limen/

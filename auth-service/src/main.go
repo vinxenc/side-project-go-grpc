@@ -16,9 +16,16 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Load .env if present (best-effort: ignore file-not-found so
+	// container/prod environments that inject env vars directly still work).
+	if err := godotenv.Load(); err == nil {
+		log.Println("INFO: loaded .env file")
+	}
+
 	mux := http.NewServeMux()
 
 	// Wrap the mux with Huma. Operations are registered onto the API, but the
