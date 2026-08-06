@@ -434,9 +434,14 @@ func TestAuthListSessions_HappyPath(t *testing.T) {
 		t.Error("/sessions returned empty array")
 	}
 
-	// Verify session structure
-	if sessions[0]["token"] == nil || sessions[0]["token"] == "" {
-		t.Error("/sessions response missing or empty 'token' field")
+	// The raw session token is a bearer credential and MUST NOT be exposed in
+	// the list response (see sessionItem's json:"-" tag).
+	if _, ok := sessions[0]["token"]; ok {
+		t.Error("/sessions response leaked the session 'token' field")
+	}
+	// A non-sensitive identifier should still be present.
+	if sessions[0]["expires_at"] == nil || sessions[0]["expires_at"] == "" {
+		t.Error("/sessions response missing 'expires_at' field")
 	}
 }
 

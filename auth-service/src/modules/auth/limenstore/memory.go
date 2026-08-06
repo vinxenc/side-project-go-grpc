@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -311,6 +312,12 @@ func valuesEqual(a, b any) bool {
 	if a == nil || b == nil {
 		return false
 	}
+	// Guard against `==` panicking on non-comparable dynamic types (maps,
+	// slices, funcs — possible for fields like Metadata). Uncomparable values
+	// are treated as unequal rather than crashing query evaluation.
+	if !reflect.TypeOf(a).Comparable() || !reflect.TypeOf(b).Comparable() {
+		return false
+	}
 	return a == b
 }
 
@@ -324,6 +331,30 @@ func compareValues(a, b any) (int, bool) {
 		return av.Compare(bv), true
 	case int64:
 		bv, ok := b.(int64)
+		if !ok {
+			return 0, false
+		}
+		if av < bv {
+			return -1, true
+		}
+		if av > bv {
+			return 1, true
+		}
+		return 0, true
+	case int:
+		bv, ok := b.(int)
+		if !ok {
+			return 0, false
+		}
+		if av < bv {
+			return -1, true
+		}
+		if av > bv {
+			return 1, true
+		}
+		return 0, true
+	case float64:
+		bv, ok := b.(float64)
 		if !ok {
 			return 0, false
 		}

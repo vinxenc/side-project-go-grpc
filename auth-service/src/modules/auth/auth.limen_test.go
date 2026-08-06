@@ -1,8 +1,19 @@
 package auth
 
 import (
+	"os"
 	"testing"
 )
+
+// TestMain enables the insecure dev secret for the whole package test binary so
+// that tests calling auth.New()/resolveSecret() without an explicit LIMEN_SECRET
+// exercise the local-dev path rather than the (correct) fail-closed error.
+// Individual tests override AUTH_ALLOW_DEV_SECRET via t.Setenv where they need
+// to assert the fail-closed behaviour.
+func TestMain(m *testing.M) {
+	os.Setenv("AUTH_ALLOW_DEV_SECRET", "true")
+	os.Exit(m.Run())
+}
 
 // TestResolveSecret_WrongLength asserts that resolveSecret returns an error
 // when LIMEN_SECRET is not exactly 32 bytes. This tests the ⚠️ edge case:
@@ -95,8 +106,8 @@ func TestAuthNew_WrongLimenSecret(t *testing.T) {
 }
 
 // TestResolveSecret_Empty asserts that resolveSecret returns the dev secret
-// when LIMEN_SECRET is unset. This exercises the ⚠️ edge case:
-// "LIMEN_SECRET unset → dev warning path; still allowed for local dev."
+// when LIMEN_SECRET is unset AND AUTH_ALLOW_DEV_SECRET=true (the opt-in enabled
+// by TestMain). This exercises the local-dev path.
 func TestResolveSecret_Empty(t *testing.T) {
 	t.Setenv("LIMEN_SECRET", "")
 
@@ -109,5 +120,22 @@ func TestResolveSecret_Empty(t *testing.T) {
 		t.Error("resolveSecret with empty LIMEN_SECRET expected non-nil secret, got nil")
 	} else if len(secret) != 32 {
 		t.Errorf("resolveSecret with empty LIMEN_SECRET expected 32-byte secret, got %d bytes", len(secret))
+	}
+}
+
+// TestResolveSecret_FailClosed asserts that resolveSecret FAILS when LIMEN_SECRET
+// is unset and the dev-secret opt-in is not enabled — preventing a real
+// deployment from booting with the publicly-known hardcoded key (CWE-798).
+func TestResolveSecret_FailClosed(t *testing.T) {
+	t.Setenv("AUTH_ALLOW_DEV_SECRET", "") // override the TestMain opt-in
+	t.Setenv("LIMEN_SECRET", "")
+
+	secret, err := resolveSecret()
+
+	if err == nil {
+		t.Error("resolveSecret with no LIMEN_SECRET and no dev opt-in expected an error, got nil")
+	}
+	if secret != nil {
+		t.Error("resolveSecret should return a nil secret when failing closed")
 	}
 }

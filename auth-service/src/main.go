@@ -35,6 +35,20 @@ func main() {
 	// decorates response bodies with a "$schema" field and adds Link headers.
 	// Drop it to keep the health payload byte-compatible: {"status","time"}.
 	config.CreateHooks = nil
+	// Declare the cookieAuth security scheme referenced by the protected auth
+	// operations so the generated OpenAPI document is valid (an operation may
+	// only reference a scheme defined under components.securitySchemes).
+	if config.Components == nil {
+		config.Components = &huma.Components{}
+	}
+	if config.Components.SecuritySchemes == nil {
+		config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{}
+	}
+	config.Components.SecuritySchemes["cookieAuth"] = &huma.SecurityScheme{
+		Type: "apiKey",
+		In:   "cookie",
+		Name: "limen_session",
+	}
 	api := humago.New(mux, config)
 
 	// Build the auth module; fail fast if limen cannot initialise (e.g. bad secret).

@@ -46,7 +46,8 @@ The server listens on `:8080`.
    ```
 
    You should see log lines like:
-   ```
+
+   ```text
    INFO: loaded .env file
    INFO: DATABASE_URL set — connecting to Postgres
    INFO: Postgres adapter ready, migrations applied
@@ -173,11 +174,12 @@ The service is organized around **feature modules**. Each module lives under
   }
   ```
 
-- **`core.RegisterModules(mux, ...)`** — wires a list of modules onto the server.
-  `main.go` registers modules in one place:
+- **`core.RegisterModules(api huma.API, ...)`** — wires a list of modules onto
+  the huma API. Each module's `Controller()` implements
+  `RegisterRoutes(api huma.API)`. `main.go` registers modules in one place:
 
   ```go
-  core.RegisterModules(mux,
+  core.RegisterModules(api,
       health.New(),
       authModule,
   )

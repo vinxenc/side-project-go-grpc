@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 
@@ -89,7 +90,7 @@ func (c *controller) RegisterRoutes(api huma.API) {
 		Path:          "/auth/passwords",
 		Tags:          []string{"Auth"},
 		DefaultStatus: http.StatusOK,
-		Errors:        []int{400, 401, 422, 429},
+		Errors:        []int{400, 401, 403, 422, 429},
 		Security: []map[string][]string{
 			{"cookieAuth": {}},
 		},
@@ -209,18 +210,30 @@ func (c *controller) delegate(ctx context.Context, method, limenPath string, bod
 // ---------------------------------------------------------------------------
 // errorFromRecorder extracts the error message from a non-2xx limen response
 // and wraps it in a huma.StatusError. Callers use this when rec.Code >= 400.
-// The json.Decode error is intentionally ignored; the fallback to
-// http.StatusText is safe and does not leak internal details.
+//
+// For 5xx responses the upstream message is NOT forwarded to the client (it may
+// contain internal detail); it is logged for operators and the client receives
+// the generic status text instead. Known 4xx messages are passed through so
+// callers see actionable validation/auth errors.
 // ---------------------------------------------------------------------------
 
 func errorFromRecorder(rec *httptest.ResponseRecorder) error {
 	var payload struct {
 		Message string `json:"message"`
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil || payload.Message == "" {
-		payload.Message = http.StatusText(rec.Code)
+	_ = json.NewDecoder(rec.Body).Decode(&payload)
+
+	msg := payload.Message
+	if rec.Code >= 500 {
+		if payload.Message != "" {
+			log.Printf("auth: upstream %d from limen: %s", rec.Code, payload.Message)
+		}
+		msg = "" // fall through to status text; do not leak internals
 	}
-	return huma.NewError(rec.Code, payload.Message)
+	if msg == "" {
+		msg = http.StatusText(rec.Code)
+	}
+	return huma.NewError(rec.Code, msg)
 }
 
 // ---------------------------------------------------------------------------

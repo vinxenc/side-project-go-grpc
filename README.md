@@ -6,7 +6,7 @@ A monorepo of Go microservices exploring HTTP and gRPC service design.
 
 | Service                         | Description                                    | Stack             |
 | ------------------------------- | ---------------------------------------------- | ----------------- |
-| [auth-service](./auth-service)  | HTTP service with a modular architecture; currently exposes a health endpoint. | Go, `net/http`    |
+| [auth-service](./auth-service)  | HTTP service with a modular architecture. Exposes a health endpoint plus credential-password authentication routes under `/auth` (sign up/in/out, sessions, password management), with OpenAPI at `/openapi.json` and docs at `/docs`. | Go, `net/http`, [huma](https://github.com/danielgtaylor/huma), [limen](https://github.com/thecodearcher/limen), PostgreSQL |
 
 ## Getting started
 

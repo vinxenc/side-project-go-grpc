@@ -95,17 +95,24 @@ func newLimen() (*limen.Limen, error) {
 }
 
 // resolveSecret returns a validated 32-byte signing secret. It reads
-// LIMEN_SECRET from the environment; if the variable is empty the dev fallback
-// is returned WITH A PROMINENT WARNING — the dev secret is publicly known and
-// provides no security. If LIMEN_SECRET is set but is not exactly 32 bytes an
-// error is returned so the caller can fail fast.
+// LIMEN_SECRET from the environment. If LIMEN_SECRET is set it MUST be exactly
+// 32 bytes or an error is returned so the caller can fail fast.
+//
+// The publicly-known dev fallback is fail-closed: when LIMEN_SECRET is unset the
+// process errors out UNLESS AUTH_ALLOW_DEV_SECRET=true is set explicitly (local
+// development only). This prevents a real deployment from silently booting with
+// a hardcoded, zero-security key (CWE-798).
 func resolveSecret() ([]byte, error) {
 	raw := os.Getenv("LIMEN_SECRET")
 	if raw == "" {
-		log.Println("WARNING: LIMEN_SECRET is not set. Using the hardcoded dev secret " +
-			"(publicly known, zero security). Set LIMEN_SECRET to a random 32-byte value " +
-			"in any non-local environment.")
-		return devSecret, nil
+		if os.Getenv("AUTH_ALLOW_DEV_SECRET") == "true" {
+			log.Println("WARNING: LIMEN_SECRET is not set. Using the hardcoded dev secret " +
+				"(publicly known, zero security) because AUTH_ALLOW_DEV_SECRET=true. " +
+				"NEVER set AUTH_ALLOW_DEV_SECRET outside local development.")
+			return devSecret, nil
+		}
+		return nil, fmt.Errorf("LIMEN_SECRET is not set; provide a 32-byte value " +
+			"(set AUTH_ALLOW_DEV_SECRET=true to use the insecure dev secret for local development only)")
 	}
 	if len(raw) != 32 {
 		return nil, fmt.Errorf("LIMEN_SECRET must be exactly 32 bytes, got %d", len(raw))

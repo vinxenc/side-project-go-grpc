@@ -27,9 +27,13 @@ type messageEnvelope struct {
 // sessionItem mirrors the limen.Session JSON (session.go). ID and UserID are
 // typed as any because the in-memory adapter uses int64 IDs whereas a real DB
 // may use UUID strings; OpenAPI types them loosely.
+//
+// The raw session Token is deliberately NOT surfaced: it is a bearer credential
+// and listing it would let any read of /auth/sessions hijack every session. The
+// `json:"-"` tag drops it during decode so it can never reach the response body.
 type sessionItem struct {
 	ID         any            `json:"id,omitempty"`
-	Token      string         `json:"token"`
+	Token      string         `json:"-"`
 	UserID     any            `json:"user_id"`
 	CreatedAt  string         `json:"created_at"`
 	ExpiresAt  string         `json:"expires_at"`
