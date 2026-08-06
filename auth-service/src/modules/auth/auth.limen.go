@@ -1,85 +1,38 @@
 package auth
 
 import (
-	"context"
 	"fmt"
-	"log"
-	"os"
 
-	"auth-service/src/modules/auth/limenstore"
-
+	gormadapter "github.com/thecodearcher/limen/adapters/gorm"
 	credentialpassword "github.com/thecodearcher/limen/plugins/credential-password"
 
 	"github.com/thecodearcher/limen"
+	"gorm.io/gorm"
 )
 
-// devSecret is a fixed 32-byte key used only when LIMEN_SECRET is unset.
-// It is publicly known (committed in source) and MUST NOT be used in any
-// shared or production environment. resolveSecret logs a prominent warning
-// whenever this fallback is active.
-var devSecret = []byte("0123456789abcdef0123456789abcdef")
-
-// newDatabaseAdapter selects the limen DatabaseAdapter based on the presence of
-// the DATABASE_URL environment variable:
-//   - DATABASE_URL set → opens a Postgres connection via the GORM adapter, runs
-//     idempotent schema migrations, and returns the adapter.
-//   - DATABASE_URL unset/empty → returns the in-memory adapter (current behaviour).
-//
-// The chosen backend is logged at startup so it is never silent.
-func newDatabaseAdapter() (limen.DatabaseAdapter, error) {
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		log.Println("INFO: DATABASE_URL not set — using in-memory store (data lost on restart)")
-		return limenstore.NewMemoryAdapter(), nil
-	}
-
-	log.Println("INFO: DATABASE_URL set — connecting to Postgres")
-	adapter, _, err := limenstore.NewGormAdapter(context.Background(), dsn)
-	if err != nil {
-		return nil, fmt.Errorf("postgres adapter: %w", err)
-	}
-	log.Println("INFO: Postgres adapter ready, migrations applied")
-	return adapter, nil
-}
-
-// newLimen builds a fully configured limen instance (Core + credential-password
-// plugin). The database adapter is chosen by newDatabaseAdapter: Postgres when
-// DATABASE_URL is set, in-memory otherwise.
+// newModule builds a fully configured limen instance from an already-open
+// *gorm.DB and returns a Module wrapping the limen handler. It is the shared
+// builder used by both the production New (which opens Postgres) and the test
+// seam NewWithDB (which hands in a SQLite DB).
 //
 // Production considerations (iteration-scope choices left as-is):
-//   - CSRF and origin checks are disabled; re-enable (WithHTTPCSRFProtection(true),
-//     WithHTTPOriginCheck(true), WithHTTPTrustedOrigins) for production.
+//   - CSRF and origin checks are disabled; re-enable for production.
 //   - CookieSecure is false; flip to true when serving over TLS.
-func newLimen() (*limen.Limen, error) {
-	secret, err := resolveSecret()
-	if err != nil {
-		return nil, fmt.Errorf("limen secret: %w", err)
-	}
-
-	baseURL := os.Getenv("AUTH_BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
-
-	adapter, err := newDatabaseAdapter()
-	if err != nil {
-		return nil, fmt.Errorf("limen database adapter: %w", err)
-	}
-
+func newModule(db *gorm.DB, secret []byte, baseURL string) (*Module, error) {
 	plugin := credentialpassword.New(
 		credentialpassword.WithUsernameSupport(true),
 	)
 
-	auth, err := limen.New(&limen.Config{
+	lm, err := limen.New(&limen.Config{
 		BaseURL:  baseURL,
 		Secret:   secret,
-		Database: adapter,
+		Database: gormadapter.New(db), // official GORM adapter: New(db *gorm.DB) *Adapter
 		Plugins:  []limen.Plugin{plugin},
 		HTTP: limen.NewDefaultHTTPConfig(
 			limen.WithHTTPBasePath("/auth"),
 			// CSRF and origin checks are disabled for this iteration to allow
-			// the in-process synthetic requests (no real Origin header) and
-			// localhost HTTP testing. Re-enable for production deployments.
+			// the in-process synthetic requests and localhost HTTP testing.
+			// Re-enable for production deployments.
 			limen.WithHTTPCSRFProtection(false),
 			limen.WithHTTPOriginCheck(false),
 			// CookieSecure=false permits cookie issuance over plain HTTP on
@@ -91,31 +44,5 @@ func newLimen() (*limen.Limen, error) {
 		return nil, fmt.Errorf("limen.New: %w", err)
 	}
 
-	return auth, nil
-}
-
-// resolveSecret returns a validated 32-byte signing secret. It reads
-// LIMEN_SECRET from the environment. If LIMEN_SECRET is set it MUST be exactly
-// 32 bytes or an error is returned so the caller can fail fast.
-//
-// The publicly-known dev fallback is fail-closed: when LIMEN_SECRET is unset the
-// process errors out UNLESS AUTH_ALLOW_DEV_SECRET=true is set explicitly (local
-// development only). This prevents a real deployment from silently booting with
-// a hardcoded, zero-security key (CWE-798).
-func resolveSecret() ([]byte, error) {
-	raw := os.Getenv("LIMEN_SECRET")
-	if raw == "" {
-		if os.Getenv("AUTH_ALLOW_DEV_SECRET") == "true" {
-			log.Println("WARNING: LIMEN_SECRET is not set. Using the hardcoded dev secret " +
-				"(publicly known, zero security) because AUTH_ALLOW_DEV_SECRET=true. " +
-				"NEVER set AUTH_ALLOW_DEV_SECRET outside local development.")
-			return devSecret, nil
-		}
-		return nil, fmt.Errorf("LIMEN_SECRET is not set; provide a 32-byte value " +
-			"(set AUTH_ALLOW_DEV_SECRET=true to use the insecure dev secret for local development only)")
-	}
-	if len(raw) != 32 {
-		return nil, fmt.Errorf("LIMEN_SECRET must be exactly 32 bytes, got %d", len(raw))
-	}
-	return []byte(raw), nil
+	return &Module{controller: &controller{handler: lm.Handler()}}, nil
 }

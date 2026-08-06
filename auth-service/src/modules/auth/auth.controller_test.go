@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"auth-service/src/modules/auth"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
@@ -23,10 +22,7 @@ func setupTestAPI(t *testing.T) (huma.API, *http.ServeMux) {
 	cfg.CreateHooks = nil // Match production config
 	api := humago.New(mux, cfg)
 
-	module, err := auth.New()
-	if err != nil {
-		t.Fatalf("auth.New() failed: %v", err)
-	}
+	module := newTestModule(t)
 
 	controller := module.Controller()
 	if controller == nil {

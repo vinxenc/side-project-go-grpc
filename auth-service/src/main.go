@@ -10,20 +10,21 @@ import (
 	"syscall"
 	"time"
 
+	"auth-service/configs"
 	"auth-service/core"
 	"auth-service/src/modules/auth"
 	"auth-service/src/modules/health"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
-	"github.com/joho/godotenv"
 )
 
 func main() {
-	// Load .env if present (best-effort: ignore file-not-found so
-	// container/prod environments that inject env vars directly still work).
-	if err := godotenv.Load(); err == nil {
-		log.Println("INFO: loaded .env file")
+	// Load and validate configuration (.env + env vars). Fails fast on missing
+	// DATABASE_URL, bad LIMEN_SECRET, etc. godotenv.Load is called inside configs.Load.
+	cfg, err := configs.Load()
+	if err != nil {
+		log.Fatalf("config load failed: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -51,8 +52,9 @@ func main() {
 	}
 	api := humago.New(mux, config)
 
-	// Build the auth module; fail fast if limen cannot initialise (e.g. bad secret).
-	authModule, err := auth.New()
+	// Build the auth module; fail fast if limen cannot initialise (e.g. unreachable
+	// DB, bad secret). auth.New opens Postgres and pings within 5 seconds.
+	authModule, err := auth.New(cfg)
 	if err != nil {
 		log.Fatalf("auth module init failed: %v", err)
 	}

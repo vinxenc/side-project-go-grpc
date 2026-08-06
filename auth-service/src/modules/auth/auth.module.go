@@ -1,6 +1,17 @@
 package auth
 
-import "auth-service/core"
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"auth-service/configs"
+	"auth-service/core"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
+)
 
 // Module is the authentication feature module. It owns the limen instance and
 // the controller that registers all auth routes.
@@ -8,22 +19,36 @@ type Module struct {
 	controller *controller
 }
 
-// New creates the auth module. It initialises limen (Core + credential-password
-// plugin + in-memory adapter) and returns an error if construction fails (e.g.
-// invalid LIMEN_SECRET or missing adapter). The caller — main.go — must handle
-// the error with log.Fatalf so the service does not start with a broken auth
-// layer.
-func New() (*Module, error) {
-	limenInstance, err := newLimen()
+// New creates the auth module using the provided validated configuration. It
+// opens a Postgres connection, verifies connectivity (5-second deadline), and
+// delegates limen construction to newModule. The caller — main.go — must handle
+// the returned error with log.Fatalf so the service does not start with a broken
+// auth layer.
+func New(cfg configs.Env) (*Module, error) {
+	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Warn),
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open postgres: %w", err)
 	}
 
-	return &Module{
-		controller: &controller{
-			handler: limenInstance.Handler(),
-		},
-	}, nil
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("db handle: %w", err)
+	}
+
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("ping postgres: %w", err)
+	}
+
+	return newModule(db, cfg.Secret, cfg.BaseURL)
 }
 
 // Controller returns the controller that owns this module's routes, satisfying

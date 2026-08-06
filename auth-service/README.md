@@ -7,23 +7,11 @@ a shared server.
 ## Requirements
 
 - Go 1.26+
-- Docker (optional — for Postgres persistence)
+- Docker (for Postgres — **required**; `DATABASE_URL` is mandatory)
 
-## Quick start (in-memory, no Docker)
+## Quick start
 
-The service falls back to an in-memory store when `DATABASE_URL` is not set.
-Data is lost on restart; useful for local dev/testing without Docker.
-
-```bash
-cd auth-service
-go run ./src
-```
-
-The server listens on `:8080`.
-
-## Quick start with Postgres (persistent)
-
-1. Start Postgres via Docker Compose (repo root):
+1. Start Postgres and auto-apply the schema via Docker Compose (repo root):
 
    ```bash
    docker compose up -d
@@ -31,7 +19,10 @@ The server listens on `:8080`.
    docker compose ps
    ```
 
-2. Copy the example env file and (optionally) edit it:
+   The `migrations/` directory is mounted into `/docker-entrypoint-initdb.d` so
+   Postgres applies the schema on first volume init automatically.
+
+2. Copy the example env file:
 
    ```bash
    cd auth-service
@@ -45,29 +36,31 @@ The server listens on `:8080`.
    go run ./src
    ```
 
-   You should see log lines like:
+4. Smoke-test the 11 auth endpoints (see **Endpoints** below).
 
-   ```text
-   INFO: loaded .env file
-   INFO: DATABASE_URL set — connecting to Postgres
-   INFO: Postgres adapter ready, migrations applied
-   ```
+### Manual migration (if not using Docker Compose)
 
-4. Smoke-test all 11 auth endpoints (see **Endpoints** below). Verify
-   persistence by restarting `go run ./src` — users and sessions created in
-   step 4 must still be accessible.
+Apply the schema directly against a running Postgres instance:
 
-5. Re-run `go run ./src` a second time to confirm migration idempotency
-   (startup must not error on an already-migrated database).
+```bash
+psql "$DATABASE_URL" -f auth-service/migrations/0001_init_limen.up.sql
+```
+
+The DDL uses `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` so it
+is idempotent and safe to run on every deployment.
 
 ## Environment variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | No | — | Postgres DSN (`postgres://user:pass@host:port/db?sslmode=disable`). When absent, the in-memory adapter is used. |
+| `DATABASE_URL` | **Yes** | — | Postgres DSN (`postgres://user:pass@host:port/db?sslmode=disable`). **No in-memory fallback**; startup fails fast if unset. |
 | `LIMEN_SECRET` | Yes* | — | Signing secret — must be exactly 32 bytes. *Startup **fails closed** if unset unless `AUTH_ALLOW_DEV_SECRET=true`. |
 | `AUTH_ALLOW_DEV_SECRET` | No | `false` | Local-dev only. When `true`, permits the built-in insecure dev secret if `LIMEN_SECRET` is unset. Never set outside local dev. |
 | `AUTH_BASE_URL` | No | `http://localhost:8080` | Base URL used for cookies and links. |
+
+Configuration is loaded by `configs.Load()` (package `auth-service/configs`),
+which calls `godotenv.Load()` then validates all required fields before the
+service starts.
 
 ## Build
 
@@ -78,7 +71,9 @@ go build ./...
 
 ## Test
 
-Tests run **without Postgres** (DATABASE_URL unset → in-memory adapter):
+Tests run **without Postgres** using a pure-Go in-memory SQLite database
+(no CGO, no Docker). The test seam `auth.NewWithDB(db, secret, baseURL)` in
+`export_test.go` bypasses the Postgres connection entirely.
 
 ```bash
 cd auth-service
@@ -138,11 +133,15 @@ curl -b cookies.txt -s -X POST http://localhost:8080/auth/signout
 auth-service/
 ├── go.mod
 ├── .example.env                  # committed env template (copy to .env)
+├── configs/                      # typed, validated service configuration
+│   └── env.go                    # Env struct, Load(), resolveSecret()
+├── migrations/                   # plain-SQL schema (applied externally)
+│   ├── 0001_init_limen.up.sql
+│   └── 0001_init_limen.down.sql
 ├── core/                         # shared, reusable building blocks
-│   ├── module.go                 # Module interface + RegisterModules(mux, ...)
-│   └── controller.go             # BaseController with JSON / Error helpers
+│   └── module.go                 # Module interface + RegisterModules(api, ...)
 └── src/
-    ├── main.go                   # boots the server, loads .env, registers modules
+    ├── main.go                   # boots the server, calls configs.Load(), registers modules
     └── modules/
         ├── health/               # health-check module
         │   ├── health.dto.go
@@ -151,15 +150,11 @@ auth-service/
         └── auth/                 # authentication module (limen-backed)
             ├── auth.dto.go
             ├── auth.controller.go
-            ├── auth.limen.go     # limen wiring + adapter selection
-            ├── auth.module.go
-            └── limenstore/
-                ├── memory.go          # in-memory adapter (default / tests)
-                ├── postgres.go        # GORM/Postgres adapter
-                ├── migrate.go         # embedded DDL migration
-                └── migrations/
-                    ├── 0001_init_limen.up.sql
-                    └── 0001_init_limen.down.sql
+            ├── auth.limen.go     # newModule — builds limen via official GORM adapter
+            ├── auth.module.go    # New(cfg) — opens Postgres, pings, calls newModule
+            ├── export_test.go    # NewWithDB test seam (SQLite in tests)
+            └── testdata/
+                └── limen_schema_sqlite.sql  # SQLite schema for tests
 ```
 
 ## Architecture
@@ -171,39 +166,33 @@ The service is organized around **feature modules**. Each module lives under
 
   ```go
   type Module interface {
-      RegisterRoutes(mux *http.ServeMux)
+      Controller() Controller
   }
   ```
 
 - **`core.RegisterModules(api huma.API, ...)`** — wires a list of modules onto
-  the huma API. Each module's `Controller()` implements
-  `RegisterRoutes(api huma.API)`. `main.go` registers modules in one place:
+  the huma API.
 
-  ```go
-  core.RegisterModules(api,
-      health.New(),
-      authModule,
-  )
-  ```
+- **`configs.Load()`** — validates all required environment variables and
+  returns a typed `configs.Env` struct. Called once at startup before any
+  module is initialised.
 
-- **`core.BaseController`** — shared HTTP helpers (`JSON`, `Error`) that module
-  controllers embed to avoid boilerplate.
+- **`auth.New(cfg configs.Env)`** — opens Postgres (with a 5-second ping
+  deadline to fail fast on bad credentials), then delegates to the internal
+  `newModule` builder which wraps the connection with limen's official GORM
+  adapter (`gormadapter.New(db)`) and builds the limen instance.
 
-### Adapter selection
+### Migrations
 
-`auth.newDatabaseAdapter()` reads `DATABASE_URL` at startup:
+The schema is applied externally — **no Go migration code, no AutoMigrate**.
 
-- **Set** → opens a `*gorm.DB` (Postgres via `gorm.io/driver/postgres`), runs
-  idempotent DDL migrations, wraps with `limen/adapters/gorm`.
-- **Unset/empty** → uses the in-memory `limenstore.MemoryAdapter` (no external
-  deps; safe for tests and local iteration).
+- **Docker Compose**: `auth-service/migrations/` is mounted into
+  `/docker-entrypoint-initdb.d` so Postgres runs it on first volume init.
+- **Manual**: `psql "$DATABASE_URL" -f auth-service/migrations/0001_init_limen.up.sql`
 
 ### Adding a module
 
 1. Create `src/modules/<name>/` with three files:
    `<name>.dto.go`, `<name>.controller.go`, `<name>.module.go`.
-2. Give the module a `Module` type with `New()` and a `RegisterRoutes(mux)` method
-   (this satisfies `core.Module`).
-3. Embed `core.BaseController` in the module's `controller` for the `JSON`/`Error`
-   helpers.
-4. Add `<name>.New()` to the `core.RegisterModules(...)` call in `src/main.go`.
+2. Give the module a `Module` type with `New()` and a `Controller() core.Controller` method.
+3. Add `<name>.New()` to the `core.RegisterModules(...)` call in `src/main.go`.
