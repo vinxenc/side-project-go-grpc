@@ -65,7 +65,8 @@ The server listens on `:8080`.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | No | — | Postgres DSN (`postgres://user:pass@host:port/db?sslmode=disable`). When absent, the in-memory adapter is used. |
-| `LIMEN_SECRET` | No | hardcoded dev fallback (insecure) | Signing secret — must be exactly 32 bytes. Override in any non-local environment. |
+| `LIMEN_SECRET` | Yes* | — | Signing secret — must be exactly 32 bytes. *Startup **fails closed** if unset unless `AUTH_ALLOW_DEV_SECRET=true`. |
+| `AUTH_ALLOW_DEV_SECRET` | No | `false` | Local-dev only. When `true`, permits the built-in insecure dev secret if `LIMEN_SECRET` is unset. Never set outside local dev. |
 | `AUTH_BASE_URL` | No | `http://localhost:8080` | Base URL used for cookies and links. |
 
 ## Build
