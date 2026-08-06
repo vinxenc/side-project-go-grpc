@@ -12,7 +12,10 @@ CREATE TABLE IF NOT EXISTS users (
   PRIMARY KEY (id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email);
-CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
+-- Unique so usernames cannot collide at the database level (NULLs are exempt in
+-- Postgres, so users without a username are unaffected). Complements limen's
+-- app-level availability check.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (username);
 
 -- sessions
 CREATE TABLE IF NOT EXISTS sessions (

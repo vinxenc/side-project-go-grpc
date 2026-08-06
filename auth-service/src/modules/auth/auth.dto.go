@@ -137,9 +137,12 @@ type revokeInput struct {
 
 // sessionOutput is used for operations that return a user payload and may set
 // a session cookie: signup, signin, password-change, password-set, me.
+// CacheControl is set to "no-store" so identity-specific responses are never
+// cached by intermediaries or the browser.
 type sessionOutput struct {
-	SetCookie []string `header:"Set-Cookie"`
-	Body      userEnvelope
+	SetCookie    []string `header:"Set-Cookie"`
+	CacheControl string   `header:"Cache-Control"`
+	Body         userEnvelope
 }
 
 // messageOutput is used for operations that return a plain message: password
@@ -155,9 +158,11 @@ type usernameCheckOutput struct {
 	}
 }
 
-// sessionsOutput is used for the list-sessions endpoint.
+// sessionsOutput is used for the list-sessions endpoint. Cache-Control is
+// "no-store" because the session list is identity-specific.
 type sessionsOutput struct {
-	Body []sessionItem
+	CacheControl string `header:"Cache-Control"`
+	Body         []sessionItem
 }
 
 // emptyOutput is used for 204 endpoints (signout, revoke-sessions). It has no

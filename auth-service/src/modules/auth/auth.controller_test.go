@@ -17,6 +17,7 @@ import (
 
 // setupTestAPI creates a fresh test API with the auth module installed.
 func setupTestAPI(t *testing.T) (huma.API, *http.ServeMux) {
+	t.Helper()
 	mux := http.NewServeMux()
 	cfg := huma.DefaultConfig("auth-service", "1.0.0")
 	cfg.CreateHooks = nil // Match production config
@@ -33,14 +34,15 @@ func setupTestAPI(t *testing.T) (huma.API, *http.ServeMux) {
 	return api, mux
 }
 
-// doRequest performs an HTTP request against the test server.
-func doRequest(t *testing.T, mux *http.ServeMux, method, path string, headers map[string]string, body any) (*http.Response, []byte) {
-	t.Helper()
+// doRequestErr performs an HTTP request against the test server and returns any
+// error instead of failing the test. It is safe to call from a goroutine (unlike
+// doRequest, which calls t.Fatalf and must only run on the test goroutine).
+func doRequestErr(mux *http.ServeMux, method, path string, headers map[string]string, body any) (*http.Response, []byte, error) {
 	var reqBody io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			t.Fatalf("marshal body failed: %v", err)
+			return nil, nil, fmt.Errorf("marshal body: %w", err)
 		}
 		reqBody = bytes.NewReader(data)
 	} else {
@@ -49,7 +51,7 @@ func doRequest(t *testing.T, mux *http.ServeMux, method, path string, headers ma
 
 	req, err := http.NewRequest(method, "http://localhost:8080"+path, reqBody)
 	if err != nil {
-		t.Fatalf("NewRequest failed: %v", err)
+		return nil, nil, fmt.Errorf("new request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -62,9 +64,20 @@ func doRequest(t *testing.T, mux *http.ServeMux, method, path string, headers ma
 
 	respBody, err := io.ReadAll(rec.Body)
 	if err != nil {
-		t.Fatalf("read response body failed: %v", err)
+		return nil, nil, fmt.Errorf("read response body: %w", err)
 	}
-	return rec.Result(), respBody
+	return rec.Result(), respBody, nil
+}
+
+// doRequest performs an HTTP request against the test server, failing the test
+// on any transport error. Call only from the test goroutine (it uses t.Fatalf).
+func doRequest(t *testing.T, mux *http.ServeMux, method, path string, headers map[string]string, body any) (*http.Response, []byte) {
+	t.Helper()
+	resp, respBody, err := doRequestErr(mux, method, path, headers, body)
+	if err != nil {
+		t.Fatalf("doRequest %s %s: %v", method, path, err)
+	}
+	return resp, respBody
 }
 
 // sessionCookie returns the "limen_session=<value>" cookie from a response,
@@ -761,7 +774,7 @@ func TestAuthOpenAPIGeneration(t *testing.T) {
 		t.Fatal("OpenAPI paths is nil")
 	}
 
-	for path, pathItem := range spec.Paths {
+	for _, pathItem := range spec.Paths {
 		if pathItem.Post != nil && pathItem.Post.OperationID != "" {
 			expectedOperations[pathItem.Post.OperationID] = true
 		}
@@ -771,7 +784,6 @@ func TestAuthOpenAPIGeneration(t *testing.T) {
 		if pathItem.Put != nil && pathItem.Put.OperationID != "" {
 			expectedOperations[pathItem.Put.OperationID] = true
 		}
-		_ = path // silence unused warning
 	}
 
 	// Verify all expected operations are present
@@ -891,7 +903,11 @@ func TestAuthConcurrentRequests(t *testing.T) {
 				"password": "ValidPassword123",
 			}
 
-			resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload)
+			resp, body, err := doRequestErr(mux, http.MethodPost, "/auth/signup/credential", nil, payload)
+			if err != nil {
+				done <- fmt.Errorf("concurrent request error: %w", err)
+				return
+			}
 			resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {

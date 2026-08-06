@@ -254,6 +254,7 @@ func (c *controller) signup(ctx context.Context, in *signupInput) (*sessionOutpu
 		return nil, err
 	}
 	out.SetCookie = rec.Result().Header["Set-Cookie"]
+	out.CacheControl = "no-store"
 	return &out, nil
 }
 
@@ -271,6 +272,7 @@ func (c *controller) signin(ctx context.Context, in *signinInput) (*sessionOutpu
 		return nil, err
 	}
 	out.SetCookie = rec.Result().Header["Set-Cookie"]
+	out.CacheControl = "no-store"
 	return &out, nil
 }
 
@@ -320,6 +322,7 @@ func (c *controller) changePassword(ctx context.Context, in *changePasswordInput
 		return nil, err
 	}
 	out.SetCookie = rec.Result().Header["Set-Cookie"]
+	out.CacheControl = "no-store"
 	return &out, nil
 }
 
@@ -337,6 +340,7 @@ func (c *controller) setPassword(ctx context.Context, in *setPasswordInput) (*se
 		return nil, err
 	}
 	out.SetCookie = rec.Result().Header["Set-Cookie"]
+	out.CacheControl = "no-store"
 	return &out, nil
 }
 
@@ -370,6 +374,7 @@ func (c *controller) me(ctx context.Context, in *meInput) (*sessionOutput, error
 		return nil, err
 	}
 	out.SetCookie = rec.Result().Header["Set-Cookie"]
+	out.CacheControl = "no-store"
 	return &out, nil
 }
 
@@ -386,6 +391,7 @@ func (c *controller) listSessions(ctx context.Context, in *sessionsInput) (*sess
 	if err := json.NewDecoder(rec.Body).Decode(&out.Body); err != nil {
 		return nil, err
 	}
+	out.CacheControl = "no-store"
 	return &out, nil
 }
 
