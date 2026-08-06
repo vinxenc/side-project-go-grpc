@@ -39,6 +39,7 @@ func setupTestAPI(t *testing.T) (huma.API, *http.ServeMux) {
 
 // doRequest performs an HTTP request against the test server.
 func doRequest(t *testing.T, mux *http.ServeMux, method, path string, headers map[string]string, body any) (*http.Response, []byte) {
+	t.Helper()
 	var reqBody io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -68,6 +69,20 @@ func doRequest(t *testing.T, mux *http.ServeMux, method, path string, headers ma
 		t.Fatalf("read response body failed: %v", err)
 	}
 	return rec.Result(), respBody
+}
+
+// sessionCookie returns the "limen_session=<value>" cookie from a response,
+// selected by name (not by Set-Cookie header order) so it is robust to limen
+// emitting additional cookies. It fails the test if the cookie is absent.
+func sessionCookie(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	for _, c := range resp.Cookies() {
+		if c.Name == "limen_session" {
+			return c.Name + "=" + c.Value
+		}
+	}
+	t.Fatal("response has no limen_session cookie")
+	return ""
 }
 
 // TestAuthSignup_HappyPath tests successful user registration
@@ -349,14 +364,8 @@ func TestAuthGetMe_HappyPath(t *testing.T) {
 		t.Fatalf("signup failed: %d. Body: %s", resp.StatusCode, string(body))
 	}
 
-	// Extract session cookie from Set-Cookie header
-	setCookieHeaders := resp.Header.Values("Set-Cookie")
-	if len(setCookieHeaders) == 0 {
-		t.Fatal("no Set-Cookie header from signup")
-	}
-
-	// Extract just the name=value part before the semicolon
-	cookieValue := strings.Split(setCookieHeaders[0], ";")[0]
+	// Extract session cookie by name (not by Set-Cookie header order).
+	cookieValue := sessionCookie(t, resp)
 
 	// Get /me with cookie
 	resp, body = doRequest(t, mux, http.MethodGet, "/auth/me", map[string]string{
@@ -409,11 +418,7 @@ func TestAuthListSessions_HappyPath(t *testing.T) {
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
 	resp.Body.Close()
 
-	cookies := resp.Header.Values("Set-Cookie")
-	if len(cookies) == 0 {
-		t.Fatal("no Set-Cookie header")
-	}
-	cookieHeader := strings.Split(cookies[0], ";")[0]
+	cookieHeader := sessionCookie(t, resp)
 
 	// List sessions
 	resp, body = doRequest(t, mux, http.MethodGet, "/auth/sessions", map[string]string{
@@ -431,7 +436,7 @@ func TestAuthListSessions_HappyPath(t *testing.T) {
 	}
 
 	if len(sessions) == 0 {
-		t.Error("/sessions returned empty array")
+		t.Fatal("/sessions returned empty array")
 	}
 
 	// The raw session token is a bearer credential and MUST NOT be exposed in
@@ -470,11 +475,7 @@ func TestAuthSignout_HappyPath(t *testing.T) {
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
 	resp.Body.Close()
 
-	cookies := resp.Header.Values("Set-Cookie")
-	if len(cookies) == 0 {
-		t.Fatal("no Set-Cookie header")
-	}
-	cookieHeader := strings.Split(cookies[0], ";")[0]
+	cookieHeader := sessionCookie(t, resp)
 
 	// Signout
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signout", map[string]string{
@@ -489,6 +490,15 @@ func TestAuthSignout_HappyPath(t *testing.T) {
 	// Verify no body
 	if len(body) > 0 {
 		t.Errorf("signout returned body=%s, want empty", string(body))
+	}
+
+	// The revoked session must no longer authenticate.
+	resp, body = doRequest(t, mux, http.MethodGet, "/auth/me", map[string]string{
+		"Cookie": cookieHeader,
+	}, nil)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("/me after signout status = %d, want %d (session should be revoked). Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
 	}
 }
 
@@ -516,11 +526,7 @@ func TestAuthRevokeSessions_HappyPath(t *testing.T) {
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
 	resp.Body.Close()
 
-	cookies := resp.Header.Values("Set-Cookie")
-	if len(cookies) == 0 {
-		t.Fatal("no Set-Cookie header")
-	}
-	cookieHeader := strings.Split(cookies[0], ";")[0]
+	cookieHeader := sessionCookie(t, resp)
 
 	// Revoke all sessions
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/revoke-sessions", map[string]string{
@@ -536,6 +542,15 @@ func TestAuthRevokeSessions_HappyPath(t *testing.T) {
 	if len(body) > 0 {
 		t.Errorf("revoke-sessions returned body=%s, want empty", string(body))
 	}
+
+	// After revoking all sessions the current cookie must no longer authenticate.
+	resp, body = doRequest(t, mux, http.MethodGet, "/auth/me", map[string]string{
+		"Cookie": cookieHeader,
+	}, nil)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("/me after revoke-sessions status = %d, want %d. Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
+	}
 }
 
 // TestAuthChangePassword_HappyPath tests changing password
@@ -550,11 +565,7 @@ func TestAuthChangePassword_HappyPath(t *testing.T) {
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
 	resp.Body.Close()
 
-	cookies := resp.Header.Values("Set-Cookie")
-	if len(cookies) == 0 {
-		t.Fatal("no Set-Cookie header")
-	}
-	cookieHeader := strings.Split(cookies[0], ";")[0]
+	cookieHeader := sessionCookie(t, resp)
 
 	// Change password
 	changePayload := map[string]any{
@@ -568,6 +579,26 @@ func TestAuthChangePassword_HappyPath(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("change password status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
+	}
+
+	// The new password must authenticate...
+	resp, body = doRequest(t, mux, http.MethodPost, "/auth/signin/credential", nil, map[string]any{
+		"credential": "changepwd@example.com",
+		"password":   "NewPassword123456",
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("signin with new password status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
+	}
+
+	// ...and the old password must be rejected.
+	resp, body = doRequest(t, mux, http.MethodPost, "/auth/signin/credential", nil, map[string]any{
+		"credential": "changepwd@example.com",
+		"password":   "OriginalPassword123",
+	})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("signin with old password status = %d, want %d (should be rejected). Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
 	}
 }
 
@@ -599,11 +630,7 @@ func TestAuthSetPassword_AlreadySet(t *testing.T) {
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
 	resp.Body.Close()
 
-	cookies := resp.Header.Values("Set-Cookie")
-	if len(cookies) == 0 {
-		t.Fatal("no Set-Cookie header")
-	}
-	cookieHeader := strings.Split(cookies[0], ";")[0]
+	cookieHeader := sessionCookie(t, resp)
 
 	// Try to set password (should fail because password already exists)
 	setPayload := map[string]any{

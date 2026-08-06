@@ -2,6 +2,7 @@ package limenstore_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -133,7 +134,7 @@ func TestMemoryAdapter_FindOne(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FindOne() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if tt.wantErr && tt.errIs != nil && err != tt.errIs {
+			if tt.wantErr && tt.errIs != nil && !errors.Is(err, tt.errIs) {
 				t.Errorf("FindOne() error = %v, want %v", err, tt.errIs)
 			}
 			if !tt.wantErr && row == nil {
@@ -265,7 +266,7 @@ func TestMemoryAdapter_Delete(t *testing.T) {
 	_, err := adapter.FindOne(ctx, "users", []limen.Where{
 		{Column: "email", Operator: limen.OpEq, Value: "user1@example.com"},
 	}, nil)
-	if err != limen.ErrRecordNotFound {
+	if !errors.Is(err, limen.ErrRecordNotFound) {
 		t.Errorf("Delete() failed: user1 still exists")
 	}
 
@@ -562,6 +563,9 @@ func TestMemoryAdapter_OrderBy(t *testing.T) {
 	}
 
 	expectedOrder := []string{"alice", "bob", "charlie"}
+	if len(rows) != len(expectedOrder) {
+		t.Fatalf("OrderBy() asc: got %d rows, want %d", len(rows), len(expectedOrder))
+	}
 	for i, name := range expectedOrder {
 		if rows[i]["name"] != name {
 			t.Errorf("OrderBy() row %d: got %v, want %v", i, rows[i]["name"], name)
@@ -579,6 +583,9 @@ func TestMemoryAdapter_OrderBy(t *testing.T) {
 	}
 
 	expectedOrder = []string{"charlie", "bob", "alice"}
+	if len(rows) != len(expectedOrder) {
+		t.Fatalf("OrderBy() desc: got %d rows, want %d", len(rows), len(expectedOrder))
+	}
 	for i, name := range expectedOrder {
 		if rows[i]["name"] != name {
 			t.Errorf("OrderBy() desc row %d: got %v, want %v", i, rows[i]["name"], name)
