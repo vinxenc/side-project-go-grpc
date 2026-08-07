@@ -17,8 +17,8 @@ import (
 // This file is the auth module's limen/Postgres integration layer. It opens a
 // real database (LimenModule.New) and wires the limen instance (newLimen).
 // Because it requires a live Postgres to exercise, it is covered by the e2e
-// suite (tests/) rather than unit tests, and scripts/coverage.sh excludes it
-// from the unit-coverage report for that reason.
+// suite (tests/) rather than unit tests, and .testcoverage.yml excludes it from
+// the unit-coverage report for that reason.
 
 // LimenConfig holds the inputs LimenModule.New needs to open Postgres and wire
 // the limen instance.

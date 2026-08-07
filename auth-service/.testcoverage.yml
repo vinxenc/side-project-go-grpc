@@ -1,0 +1,26 @@
+# Coverage gate for the auth-service business logic under ./src, enforced with
+# github.com/vladopajic/go-test-coverage.
+#
+# Generate the profile first (cross-package attribution via -coverpkg), then run
+# the gate:
+#   go test -race -covermode=atomic -coverpkg=./src/... -coverprofile=cover.out ./src/...
+#   go run github.com/vladopajic/go-test-coverage/v2@v2.19.0 --config=.testcoverage.yml
+
+profile: cover.out
+local-prefix: auth-service
+
+# Only the overall ./src coverage is gated (as before). Per-file/package
+# thresholds stay at 0 so individual handlers that legitimately sit just under
+# 90% — defensive branches unreachable via HTTP — don't fail the build.
+threshold:
+  total: 90
+
+# Excluded from the report: code that unit tests cannot meaningfully cover.
+#   - src/main.go            — the process entrypoint/wiring.
+#   - .../auth.limen.go      — the limen/Postgres integration layer; it opens a
+#                              real database and is covered by the e2e suite
+#                              (tests/) instead.
+exclude:
+  paths:
+    - src/main\.go$
+    - src/modules/auth/auth\.limen\.go$

@@ -86,15 +86,18 @@ cd auth-service
 go test ./...
 ```
 
-**Coverage** is focused on the `./src` business logic and gated at **≥ 90%**:
+**Coverage** is focused on the `./src` business logic and gated at **≥ 90%**
+with [`go-test-coverage`](https://github.com/vladopajic/go-test-coverage)
+(config in [`.testcoverage.yml`](.testcoverage.yml)):
 
 ```bash
 cd auth-service
-./scripts/coverage.sh          # prints per-func report + total, fails under 90%
+go test -race -covermode=atomic -coverpkg=./src/... -coverprofile=cover.out ./src/...
+go run github.com/vladopajic/go-test-coverage/v2@v2.19.0 --config=.testcoverage.yml
 ```
 
-The report intentionally scopes to `./src` and excludes two things that unit
-tests cannot meaningfully cover: the `main` entrypoint (`src/main.go`) and the
+The config scopes the total to `./src` and excludes two things that unit tests
+cannot meaningfully cover: the `main` entrypoint (`src/main.go`) and the
 limen/Postgres integration layer (`src/modules/auth/auth.limen.go`, which opens
 a real database and is covered by the e2e suite instead).
 
@@ -122,7 +125,7 @@ On every pull request to `master` that touches `auth-service/` (or
 (fail-fast — each stage gates the next):
 
 1. **lint** — `golangci-lint` (v2, standard set).
-2. **unit tests** — `scripts/coverage.sh`; fails if `./src` coverage < 90%.
+2. **unit tests** — `go test` + `go-test-coverage`; fails if `./src` coverage < 90%.
 3. **e2e** — `docker compose --profile e2e up` + the tagged suite.
 4. **trivy** — filesystem scan (vuln + secret + misconfig), fails on CRITICAL/HIGH.
 
@@ -181,8 +184,7 @@ auth-service/
 ├── .example.env                  # committed env template (copy to .env)
 ├── Dockerfile                    # multi-stage build → distroless (used by e2e + prod)
 ├── .dockerignore
-├── scripts/
-│   └── coverage.sh               # src coverage report + ≥90% gate
+├── .testcoverage.yml             # go-test-coverage config: ≥90% gate on ./src
 ├── migrations/                   # plain-SQL schema (applied externally)
 │   ├── 0001_init_limen.up.sql
 │   └── 0001_init_limen.down.sql
