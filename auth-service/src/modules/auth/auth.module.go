@@ -23,11 +23,9 @@ type Module struct {
 // — must handle the returned error with log.Fatalf so the service does not
 // start with a broken auth layer.
 func New(cfg Config) (*Module, error) {
-	return LimenModule.New(LimenConfig{
-		DatabaseURL: cfg.DatabaseURL,
-		Secret:      cfg.Secret,
-		BaseURL:     cfg.BaseURL,
-	})
+	// Config and LimenConfig have identical fields, so a direct conversion is
+	// clearer than re-listing them (staticcheck S1016).
+	return LimenModule.New(LimenConfig(cfg))
 }
 
 // Controller returns the controller that owns this module's routes, satisfying

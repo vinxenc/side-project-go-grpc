@@ -424,13 +424,13 @@ func TestAuthListSessions_HappyPath(t *testing.T) {
 		"email":    "listses@example.com",
 		"password": "ValidPassword123",
 	}
-	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
+	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
 	resp.Body.Close()
 
 	cookieHeader := sessionCookie(t, resp)
 
 	// List sessions
-	resp, body = doRequest(t, mux, http.MethodGet, "/auth/sessions", map[string]string{
+	resp, body := doRequest(t, mux, http.MethodGet, "/auth/sessions", map[string]string{
 		"Cookie": cookieHeader,
 	}, nil)
 	defer resp.Body.Close()

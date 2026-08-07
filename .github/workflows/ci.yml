@@ -34,8 +34,11 @@ jobs:
               - 'docker-compose.yml'
               - '.github/workflows/ci.yml'
 
-  # auth-pipeline: lint, unit tests, and a Trivy scan. Runs only when the
-  # auth-service folder (or its shared tooling) changed.
+  # auth-pipeline runs sequentially: lint -> unit tests -> e2e -> trivy. Each
+  # stage depends on the previous one so a failure stops the pipeline early
+  # (fail fast) and the jobs never run in parallel. Every stage also depends on
+  # `changes` so it can read the path-filter output and be skipped when
+  # auth-service did not change.
   auth-lint:
     name: auth-pipeline / lint
     needs: changes
@@ -51,14 +54,15 @@ jobs:
           go-version-file: auth-service/go.mod
           cache-dependency-path: auth-service/go.sum
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # v7 is required for golangci-lint v2 (the repo's .golangci.yml is v2).
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1.0
           working-directory: auth-service
 
   auth-unittest:
     name: auth-pipeline / unit tests
-    needs: changes
+    needs: [changes, auth-lint]
     if: needs.changes.outputs.auth-service == 'true'
     runs-on: ubuntu-latest
     defaults:
@@ -81,7 +85,7 @@ jobs:
   # by the "e2e" build tag so it is excluded from the DB-free unit run above.
   auth-e2e:
     name: auth-pipeline / e2e
-    needs: changes
+    needs: [changes, auth-unittest]
     if: needs.changes.outputs.auth-service == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -110,7 +114,7 @@ jobs:
 
   auth-trivy:
     name: auth-pipeline / trivy scan
-    needs: changes
+    needs: [changes, auth-e2e]
     if: needs.changes.outputs.auth-service == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -118,7 +122,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           scan-type: fs
           scan-ref: auth-service

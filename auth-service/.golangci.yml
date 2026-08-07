@@ -9,3 +9,13 @@ run:
 linters:
   # The "standard" set: errcheck, govet, ineffassign, staticcheck, unused.
   default: standard
+  exclusions:
+    rules:
+      # Ignoring the error from an HTTP response Body.Close is idiomatic — the
+      # body has already been read and there is nothing actionable to do on a
+      # close failure. Scoped to test files, keeping the strict standard set
+      # everywhere else.
+      - path: _test\.go
+        linters:
+          - errcheck
+        source: 'Body\.Close\(\)'
