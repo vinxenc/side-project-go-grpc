@@ -4,6 +4,10 @@ import (
 	"testing"
 
 	"auth-service/src/modules/auth"
+
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // secret32 is the publicly known 32-byte dev key, valid for constructing the
@@ -36,5 +40,31 @@ func TestNew_MalformedDSN(t *testing.T) {
 	})
 	if m.Controller() != nil {
 		t.Fatal("auth.New expected a nil controller for a malformed DSN")
+	}
+}
+
+// TestNew_LimenWiringFailure verifies the third failure mode: openDB succeeds
+// but the limen wiring phase (newLimen) fails. The shared builder surfaces that
+// as an error, which LimenModule.New logs and turns into a route-less module.
+//
+// It exercises newLimen directly via the NewWithDB seam rather than through
+// auth.New, because forcing openDB to succeed while newLimen fails would require
+// a live Postgres. limen.New rejects a secret that is not exactly 32 bytes, so a
+// short secret drives the wiring failure with no network or Docker.
+func TestNew_LimenWiringFailure(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:wiringfail?mode=memory&cache=shared"), &gorm.Config{
+		Logger: gormlogger.Discard,
+	})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	if _, err := auth.NewWithDB(db, []byte("too-short-secret"), "http://localhost:8080"); err == nil {
+		t.Fatal("NewWithDB expected an error when limen wiring fails (invalid secret)")
 	}
 }

@@ -51,6 +51,11 @@ func (limenModule) New(cfg LimenConfig) *Module {
 	module, err := newLimen(db, cfg.Secret, cfg.BaseURL)
 	if err != nil {
 		log.Printf("auth: wire limen: %v", err)
+		// newLimen does not close caller-owned databases, so close the pool we
+		// opened here to avoid leaking connections on the degraded path.
+		if sqlDB, dberr := db.DB(); dberr == nil {
+			_ = sqlDB.Close()
+		}
 		return &Module{}
 	}
 	return module
@@ -80,6 +85,9 @@ func openDB(databaseURL string) (*gorm.DB, error) {
 	defer cancel()
 
 	if err := sqlDB.PingContext(ctx); err != nil {
+		// openDB owns the pool until it returns successfully; close it so a
+		// failed ping does not leak the connection pool.
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
