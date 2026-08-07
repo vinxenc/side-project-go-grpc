@@ -53,8 +53,13 @@ func main() {
 	api := humago.New(mux, config)
 
 	// Build the auth module; fail fast if limen cannot initialise (e.g. unreachable
-	// DB, bad secret). auth.New opens Postgres and pings within 5 seconds.
-	authModule, err := auth.New(cfg)
+	// DB, bad secret). auth.New delegates to LimenModule.New, which opens Postgres
+	// and pings within 5 seconds.
+	authModule, err := auth.New(auth.Config{
+		DatabaseURL: cfg.DatabaseURL,
+		Secret:      cfg.Secret,
+		BaseURL:     cfg.BaseURL,
+	})
 	if err != nil {
 		log.Fatalf("auth module init failed: %v", err)
 	}

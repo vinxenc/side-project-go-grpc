@@ -1,54 +1,33 @@
 package auth
 
-import (
-	"context"
-	"fmt"
-	"time"
+import "auth-service/core"
 
-	"auth-service/configs"
-	"auth-service/core"
-
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
-)
+// Config holds the inputs required to construct the auth module. It is the auth
+// package's own contract, decoupled from the configs package; main.go maps
+// configs.Setting onto it.
+type Config struct {
+	DatabaseURL string // Postgres DSN/URL
+	Secret      []byte // 32-byte signing secret
+	BaseURL     string // base URL used for cookies/links
+}
 
 // Module is the authentication feature module. It owns the limen instance and
-// the controller that registers all auth routes.
+// the controller that registers all auth routes. Construct it via New
+// (production) or NewWithDB (tests).
 type Module struct {
 	controller *controller
 }
 
-// New creates the auth module using the provided validated configuration. It
-// opens a Postgres connection, verifies connectivity (5-second deadline), and
-// delegates limen construction to newModule. The caller — main.go — must handle
-// the returned error with log.Fatalf so the service does not start with a broken
-// auth layer.
-func New(cfg configs.Env) (*Module, error) {
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Warn),
+// New constructs the auth module from cfg by delegating to the limen layer
+// (LimenModule.New), which opens Postgres and wires limen. The caller — main.go
+// — must handle the returned error with log.Fatalf so the service does not
+// start with a broken auth layer.
+func New(cfg Config) (*Module, error) {
+	return LimenModule.New(LimenConfig{
+		DatabaseURL: cfg.DatabaseURL,
+		Secret:      cfg.Secret,
+		BaseURL:     cfg.BaseURL,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("open postgres: %w", err)
-	}
-
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("db handle: %w", err)
-	}
-
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetConnMaxLifetime(time.Hour)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := sqlDB.PingContext(ctx); err != nil {
-		return nil, fmt.Errorf("ping postgres: %w", err)
-	}
-
-	return newModule(db, cfg.Secret, cfg.BaseURL)
 }
 
 // Controller returns the controller that owns this module's routes, satisfying
