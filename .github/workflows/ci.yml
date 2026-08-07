@@ -74,6 +74,45 @@ jobs:
       - name: Run unit tests
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
+  # End-to-end tests: exercise the real HTTP API (health + auth) over a socket
+  # against a live Postgres, using the production auth.New wiring. Guarded by the
+  # "e2e" build tag so they are excluded from the DB-free unit run above.
+  auth-e2e:
+    name: auth-pipeline / e2e
+    needs: changes
+    if: needs.changes.outputs.auth-service == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: auth
+          POSTGRES_PASSWORD: auth
+          POSTGRES_DB: authdb
+        ports:
+          - 5432:5432
+        # Wait for Postgres to accept connections before the job's steps run.
+        options: >-
+          --health-cmd "pg_isready -U auth -d authdb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: auth-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: auth-service/go.mod
+          cache-dependency-path: auth-service/go.sum
+      - name: Run e2e tests
+        # The suite applies migrations/0001_init_limen.up.sql itself (idempotent)
+        # and boots the server in-process, so no separate schema step is needed.
+        env:
+          DATABASE_URL: postgres://auth:auth@localhost:5432/authdb?sslmode=disable
+        run: go test -tags=e2e -v ./tests/...
+
   auth-trivy:
     name: auth-pipeline / trivy scan
     needs: changes
