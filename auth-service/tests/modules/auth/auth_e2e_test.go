@@ -128,21 +128,24 @@ func TestSigninFlow(t *testing.T) {
 		t.Fatalf("me after signin status = %d, want 200. Body: %s", resp.Status, resp.Raw)
 	}
 
-	// Wrong password is rejected and issues no session.
+	// Wrong password is rejected with a 4xx client error (normally 401; limen may
+	// answer 429 if its rate limiter trips under load) and issues no session.
+	// Requiring a 4xx — rather than the old `< 400` — rejects 5xx, so a
+	// server-side regression can't masquerade as a "rejected" login.
 	bad := tests.NewClient(t)
 	resp = bad.Do(http.MethodPost, "/auth/signin/credential", map[string]any{
 		"credential": email,
 		"password":   "WrongPassword999",
 	})
-	if resp.Status < 400 {
-		t.Errorf("signin with wrong password status = %d, want >= 400. Body: %s", resp.Status, resp.Raw)
+	if !isClientError(resp.Status) {
+		t.Errorf("signin with wrong password status = %d, want a 4xx client error. Body: %s", resp.Status, resp.Raw)
 	}
 	if bad.HasSessionCookie() {
 		t.Error("failed signin unexpectedly set a session cookie")
 	}
 }
 
-// TestMeRequiresSession verifies protected endpoints reject anonymous callers.
+// TestMeRequiresSession verifies protected read endpoints reject anonymous callers.
 func TestMeRequiresSession(t *testing.T) {
 	c := tests.NewClient(t)
 	for _, path := range []string{"/auth/me", "/auth/sessions"} {
@@ -151,6 +154,43 @@ func TestMeRequiresSession(t *testing.T) {
 			t.Errorf("anonymous GET %s status = %d, want 401. Body: %s", path, resp.Status, resp.Raw)
 		}
 	}
+}
+
+// TestProtectedWriteRequiresSession verifies protected write endpoints reject
+// anonymous callers too (not just the GET reads above).
+func TestProtectedWriteRequiresSession(t *testing.T) {
+	c := tests.NewClient(t)
+	cases := []struct {
+		name string
+		path string
+		body any
+	}{
+		{"signout", "/auth/signout", nil},
+		{"revoke-sessions", "/auth/revoke-sessions", nil},
+		// A schema-valid body is required so the request reaches the auth check
+		// rather than being rejected as a 422 by input validation first.
+		{"change-password", "/auth/passwords/change", map[string]any{
+			"current_password": "OldPassword123",
+			"new_password":     "ValidPassword123",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := c.Do(http.MethodPost, tc.path, tc.body)
+			// Normally 401; a 4xx (never 5xx) also covers a rate-limit 429.
+			if !isClientError(resp.Status) {
+				t.Errorf("anonymous POST %s status = %d, want a 4xx client error. Body: %s", tc.path, resp.Status, resp.Raw)
+			}
+		})
+	}
+}
+
+// isClientError reports whether status is a 4xx client error. Auth-rejection
+// tests assert this rather than an exact code: the normal answer is 401, but
+// limen's rate limiter can return 429 under load — both are valid rejections,
+// whereas a 5xx would signal a real server-side fault.
+func isClientError(status int) bool {
+	return status >= 400 && status < 500
 }
 
 // TestUsernameAvailability verifies the availability check flips from available
@@ -211,12 +251,12 @@ func TestChangePasswordFlow(t *testing.T) {
 		t.Fatalf("change-password status = %d, want 200. Body: %s", resp.Status, resp.Raw)
 	}
 
-	// Old password no longer signs in.
+	// Old password no longer signs in — a 4xx client error, never a 5xx.
 	old := tests.NewClient(t)
 	if resp := old.Do(http.MethodPost, "/auth/signin/credential", map[string]any{
 		"credential": email, "password": oldPassword,
-	}); resp.Status < 400 {
-		t.Errorf("signin with old password status = %d, want >= 400. Body: %s", resp.Status, resp.Raw)
+	}); !isClientError(resp.Status) {
+		t.Errorf("signin with old password status = %d, want a 4xx client error. Body: %s", resp.Status, resp.Raw)
 	}
 
 	// New password signs in successfully.
@@ -261,6 +301,8 @@ func TestSignupValidation(t *testing.T) {
 		{"short password", map[string]any{"email": "a@example.com", "password": "short"}},
 		{"missing email", map[string]any{"password": "ValidPassword123"}},
 		{"invalid email", map[string]any{"email": "not-an-email", "password": "ValidPassword123"}},
+		{"missing password", map[string]any{"email": "a@example.com"}},
+		{"empty body", map[string]any{}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

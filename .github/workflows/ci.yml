@@ -13,6 +13,9 @@ concurrency:
 
 permissions:
   contents: read
+  # dorny/paths-filter reads changed files for pull_request events; grant the
+  # least-privilege read scope it documents so the `changes` job is robust.
+  pull-requests: read
 
 jobs:
   # Detect which service folders changed so downstream pipelines can opt in.
