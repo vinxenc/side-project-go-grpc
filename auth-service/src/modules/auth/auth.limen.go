@@ -133,5 +133,16 @@ func newLimen(db *gorm.DB, secret []byte, baseURL string) (*Module, error) {
 		return nil, fmt.Errorf("limen.New: %w", err)
 	}
 
-	return &Module{controller: &controller{handler: lm.Handler()}}, nil
+	// Capture the pool's Close so Module.Close (called during graceful shutdown)
+	// releases the connections this module holds. openDB already verified db.DB()
+	// succeeds on the production path; NewWithDB hands in a live *gorm.DB too.
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("db handle: %w", err)
+	}
+
+	return &Module{
+		controller: &controller{handler: lm.Handler()},
+		closeFn:    sqlDB.Close,
+	}, nil
 }

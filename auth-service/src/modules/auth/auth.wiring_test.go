@@ -68,3 +68,41 @@ func TestNew_LimenWiringFailure(t *testing.T) {
 		t.Fatal("NewWithDB expected an error when limen wiring fails (invalid secret)")
 	}
 }
+
+// TestModule_Close_ReleasesDBPool verifies that Close releases the connection
+// pool newLimen wired, so graceful shutdown does not leak connections. After
+// Close, pinging the same underlying pool must fail.
+func TestModule_Close_ReleasesDBPool(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:closepool?mode=memory&cache=shared"), &gorm.Config{
+		Logger: gormlogger.Discard,
+	})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+
+	m, err := auth.NewWithDB(db, secret32, "http://localhost:8080")
+	if err != nil {
+		t.Fatalf("NewWithDB: %v", err)
+	}
+
+	if err := m.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db handle: %v", err)
+	}
+	if err := sqlDB.Ping(); err == nil {
+		t.Fatal("expected Ping to fail after Close; the pool is still open")
+	}
+}
+
+// TestModule_Close_NoResources verifies that Close is a no-op for a module that
+// owns no resources (a handler-injected module has no database pool).
+func TestModule_Close_NoResources(t *testing.T) {
+	m := auth.NewWithHandler(nil)
+	if err := m.Close(); err != nil {
+		t.Fatalf("Close on a resource-less module: %v", err)
+	}
+}
