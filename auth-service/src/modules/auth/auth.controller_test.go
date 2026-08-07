@@ -105,7 +105,7 @@ func TestAuthSignup_HappyPath(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("signup status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
@@ -151,14 +151,14 @@ func TestAuthSignup_DuplicateEmail(t *testing.T) {
 
 	// First signup succeeds
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("first signup failed: %d", resp.StatusCode)
 	}
 
 	// Second signup with same email fails
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("duplicate email status = %d, want %d. Body: %s", resp.StatusCode, http.StatusConflict, string(body))
@@ -176,7 +176,7 @@ func TestAuthSignup_DuplicateUsername(t *testing.T) {
 		"username": "duplicateuser",
 	}
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload1)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("first signup failed: %d", resp.StatusCode)
 	}
@@ -188,7 +188,7 @@ func TestAuthSignup_DuplicateUsername(t *testing.T) {
 		"username": "duplicateuser",
 	}
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload2)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("duplicate username status = %d, want %d. Body: %s", resp.StatusCode, http.StatusConflict, string(body))
@@ -205,7 +205,7 @@ func TestAuthSignup_MissingPassword(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// huma validates required fields and returns 422
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -223,7 +223,7 @@ func TestAuthSignup_PasswordTooShort(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// huma validates minLength and returns 422
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -241,7 +241,7 @@ func TestAuthSignin_HappyPath(t *testing.T) {
 		"password": "ValidPassword123",
 	}
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Then signin
 	signinPayload := map[string]any{
@@ -249,7 +249,7 @@ func TestAuthSignin_HappyPath(t *testing.T) {
 		"password":   "ValidPassword123",
 	}
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signin/credential", nil, signinPayload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("signin status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
@@ -281,7 +281,7 @@ func TestAuthSignin_WrongPassword(t *testing.T) {
 		"password": "CorrectPassword123",
 	}
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Signin with wrong password
 	signinPayload := map[string]any{
@@ -289,7 +289,7 @@ func TestAuthSignin_WrongPassword(t *testing.T) {
 		"password":   "WrongPassword123",
 	}
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signin/credential", nil, signinPayload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("wrong password status = %d, want %d. Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
@@ -305,7 +305,7 @@ func TestAuthUsernameCheck_Available(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/usernames/check", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("username check status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
@@ -333,14 +333,14 @@ func TestAuthUsernameCheck_Taken(t *testing.T) {
 		"username": "takenusername",
 	}
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Check if username is available
 	checkPayload := map[string]any{
 		"username": "takenusername",
 	}
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/usernames/check", nil, checkPayload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("username check status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -367,7 +367,7 @@ func TestAuthGetMe_HappyPath(t *testing.T) {
 		"password": "ValidPassword123",
 	}
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("signup failed: %d. Body: %s", resp.StatusCode, string(body))
@@ -380,7 +380,7 @@ func TestAuthGetMe_HappyPath(t *testing.T) {
 	resp, body = doRequest(t, mux, http.MethodGet, "/auth/me", map[string]string{
 		"Cookie": cookieValue,
 	}, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("/me status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
@@ -408,7 +408,7 @@ func TestAuthGetMe_Unauthorized(t *testing.T) {
 
 	// Try /me without cookie
 	resp, body := doRequest(t, mux, http.MethodGet, "/auth/me", nil, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("/me without cookie status = %d, want %d. Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
@@ -424,16 +424,16 @@ func TestAuthListSessions_HappyPath(t *testing.T) {
 		"email":    "listses@example.com",
 		"password": "ValidPassword123",
 	}
-	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	resp.Body.Close()
+	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
+	_ = resp.Body.Close()
 
 	cookieHeader := sessionCookie(t, resp)
 
 	// List sessions
-	resp, body = doRequest(t, mux, http.MethodGet, "/auth/sessions", map[string]string{
+	resp, body := doRequest(t, mux, http.MethodGet, "/auth/sessions", map[string]string{
 		"Cookie": cookieHeader,
 	}, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("/sessions status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
@@ -465,7 +465,7 @@ func TestAuthListSessions_Unauthorized(t *testing.T) {
 
 	// Try /sessions without cookie
 	resp, body := doRequest(t, mux, http.MethodGet, "/auth/sessions", nil, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("/sessions without cookie status = %d, want %d. Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
@@ -482,7 +482,7 @@ func TestAuthSignout_HappyPath(t *testing.T) {
 		"password": "ValidPassword123",
 	}
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	cookieHeader := sessionCookie(t, resp)
 
@@ -490,7 +490,7 @@ func TestAuthSignout_HappyPath(t *testing.T) {
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signout", map[string]string{
 		"Cookie": cookieHeader,
 	}, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("signout status = %d, want %d. Body: %s", resp.StatusCode, http.StatusNoContent, string(body))
@@ -505,7 +505,7 @@ func TestAuthSignout_HappyPath(t *testing.T) {
 	resp, body = doRequest(t, mux, http.MethodGet, "/auth/me", map[string]string{
 		"Cookie": cookieHeader,
 	}, nil)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("/me after signout status = %d, want %d (session should be revoked). Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
 	}
@@ -516,7 +516,7 @@ func TestAuthSignout_Unauthorized(t *testing.T) {
 	_, mux := setupTestAPI(t)
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signout", nil, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("signout without cookie status = %d, want %d. Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
@@ -533,7 +533,7 @@ func TestAuthRevokeSessions_HappyPath(t *testing.T) {
 		"password": "ValidPassword123",
 	}
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	cookieHeader := sessionCookie(t, resp)
 
@@ -541,7 +541,7 @@ func TestAuthRevokeSessions_HappyPath(t *testing.T) {
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/revoke-sessions", map[string]string{
 		"Cookie": cookieHeader,
 	}, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("revoke-sessions status = %d, want %d. Body: %s", resp.StatusCode, http.StatusNoContent, string(body))
@@ -556,7 +556,7 @@ func TestAuthRevokeSessions_HappyPath(t *testing.T) {
 	resp, body = doRequest(t, mux, http.MethodGet, "/auth/me", map[string]string{
 		"Cookie": cookieHeader,
 	}, nil)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("/me after revoke-sessions status = %d, want %d. Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
 	}
@@ -572,7 +572,7 @@ func TestAuthChangePassword_HappyPath(t *testing.T) {
 		"password": "OriginalPassword123",
 	}
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	cookieHeader := sessionCookie(t, resp)
 
@@ -584,7 +584,7 @@ func TestAuthChangePassword_HappyPath(t *testing.T) {
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/passwords/change", map[string]string{
 		"Cookie": cookieHeader,
 	}, changePayload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("change password status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
@@ -595,7 +595,7 @@ func TestAuthChangePassword_HappyPath(t *testing.T) {
 		"credential": "changepwd@example.com",
 		"password":   "NewPassword123456",
 	})
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("signin with new password status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
 	}
@@ -605,7 +605,7 @@ func TestAuthChangePassword_HappyPath(t *testing.T) {
 		"credential": "changepwd@example.com",
 		"password":   "OriginalPassword123",
 	})
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("signin with old password status = %d, want %d (should be rejected). Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
 	}
@@ -620,7 +620,7 @@ func TestAuthChangePassword_Unauthorized(t *testing.T) {
 		"new_password":     "NewPassword123456",
 	}
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/passwords/change", nil, changePayload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("change password without cookie status = %d, want %d. Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
@@ -637,7 +637,7 @@ func TestAuthSetPassword_AlreadySet(t *testing.T) {
 		"password": "InitialPassword123",
 	}
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	cookieHeader := sessionCookie(t, resp)
 
@@ -648,7 +648,7 @@ func TestAuthSetPassword_AlreadySet(t *testing.T) {
 	resp, body := doRequest(t, mux, http.MethodPut, "/auth/passwords", map[string]string{
 		"Cookie": cookieHeader,
 	}, setPayload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("set password with existing password status = %d, want %d. Body: %s", resp.StatusCode, http.StatusForbidden, string(body))
@@ -663,7 +663,7 @@ func TestAuthSetPassword_Unauthorized(t *testing.T) {
 		"new_password": "NewSetPassword123456",
 	}
 	resp, body := doRequest(t, mux, http.MethodPut, "/auth/passwords", nil, setPayload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("set password without cookie status = %d, want %d. Body: %s", resp.StatusCode, http.StatusUnauthorized, string(body))
@@ -679,7 +679,7 @@ func TestAuthRequestPasswordReset_HappyPath(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/passwords/request-reset", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("request-reset status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
@@ -704,7 +704,7 @@ func TestAuthRequestPasswordReset_UnknownEmail(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/passwords/request-reset", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Spec says this always returns 200 to avoid user enumeration
 	if resp.StatusCode != http.StatusOK {
@@ -843,7 +843,7 @@ func TestAuthSetCookiePassthrough(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("signup status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
@@ -880,7 +880,7 @@ func TestAuthInvalidEmail(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// huma validates format:email
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -908,7 +908,7 @@ func TestAuthConcurrentRequests(t *testing.T) {
 				done <- fmt.Errorf("concurrent request error: %w", err)
 				return
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
 				done <- fmt.Errorf("concurrent signup failed: %d. Body: %s", resp.StatusCode, string(body))
@@ -936,7 +936,7 @@ func TestAuthSignupOptionalUsername(t *testing.T) {
 	}
 
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, payload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("signup without username status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
@@ -954,7 +954,7 @@ func TestAuthSigninWithUsername(t *testing.T) {
 		"username": "myusername",
 	}
 	resp, _ := doRequest(t, mux, http.MethodPost, "/auth/signup/credential", nil, signupPayload)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Signin with username credential
 	signinPayload := map[string]any{
@@ -962,7 +962,7 @@ func TestAuthSigninWithUsername(t *testing.T) {
 		"password":   "ValidPassword123",
 	}
 	resp, body := doRequest(t, mux, http.MethodPost, "/auth/signin/credential", nil, signinPayload)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("signin with username status = %d, want %d. Body: %s", resp.StatusCode, http.StatusOK, string(body))
