@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"auth-service/core"
-	"auth-service/setting"
+	"auth-service/src/core"
+	"auth-service/src/setting"
 	"auth-service/src/modules/auth"
 	"auth-service/src/modules/health"
 

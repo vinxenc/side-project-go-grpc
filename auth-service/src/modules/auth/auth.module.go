@@ -1,6 +1,6 @@
 package auth
 
-import "auth-service/core"
+import "auth-service/src/core"
 
 // Config holds the inputs required to construct the auth module. It is the auth
 // package's own contract, decoupled from the setting package; main.go maps

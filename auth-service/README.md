@@ -58,7 +58,7 @@ is idempotent and safe to run on every deployment.
 | `AUTH_ALLOW_DEV_SECRET` | No | `false` | Local-dev only. When `true`, permits the built-in insecure dev secret if `LIMEN_SECRET` is unset. Never set outside local dev. |
 | `AUTH_BASE_URL` | No | `http://localhost:8080` | Base URL used for cookies and links. |
 
-Configuration is loaded by `setting.Load()` (package `auth-service/setting`),
+Configuration is loaded by `setting.Load()` (package `auth-service/src/setting`),
 which calls `godotenv.Load()` then validates all required fields via
 `github.com/caarlos0/env` before the service starts.
 
@@ -69,16 +69,79 @@ cd auth-service
 go build ./...
 ```
 
-## Test
+## Running checks locally
 
-Tests run **without Postgres** using a pure-Go in-memory SQLite database
+These are the same stages the CI `auth-pipeline` runs, in the same order. Run
+them from the `auth-service/` directory unless noted otherwise. The tool
+versions below match what CI pins; the `go install`/`go run` commands don't
+modify this module's `go.mod`, and if you already have a tool installed you can
+use it directly.
+
+### 1. Lint
+
+`golangci-lint` v2 with the standard linter set (config: [`.golangci.yml`](.golangci.yml)).
+Install the version CI pins (or see the [install docs](https://golangci-lint.run/welcome/install/)),
+then run it:
+
+```bash
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+cd auth-service
+golangci-lint run ./...
+```
+
+### 2. Unit tests + coverage gate
+
+Unit tests run **without Postgres** using a pure-Go in-memory SQLite database
 (no CGO, no Docker). The test seam `auth.NewWithDB(db, secret, baseURL)` in
-`export_test.go` bypasses the Postgres connection entirely.
+`export_test.go` bypasses the Postgres connection entirely, and
+`auth.NewWithHandler(h)` injects a synthetic upstream to exercise controller
+success/error/decode branches.
 
 ```bash
 cd auth-service
+# Just run the tests:
 go test ./...
+
+# Or run them with the coverage gate (≥ 90% on ./src), as CI does:
+go test -race -covermode=atomic -coverpkg=./src/... -coverprofile=cover.out ./src/...
+go run github.com/vladopajic/go-test-coverage/v2@v2.19.0 --config=.testcoverage.yml
 ```
+
+Coverage is enforced with [`go-test-coverage`](https://github.com/vladopajic/go-test-coverage)
+(config: [`.testcoverage.yml`](.testcoverage.yml)). It scopes the total to
+`./src` and excludes two things unit tests cannot meaningfully cover: the `main`
+entrypoint (`src/main.go`) and the limen/Postgres integration layer
+(`src/modules/auth/auth.limen.go`, which opens a real database and is covered by
+the e2e suite instead).
+
+### 3. End-to-end tests (real stack)
+
+Black-box e2e tests run the service as a **real container** (built from
+`Dockerfile`) against a **live Postgres**, driving the HTTP API over the
+network. They live in `tests/` and are guarded by the `e2e` build tag, so they
+are excluded from the unit run above.
+
+```bash
+docker compose --profile e2e up -d --build   # from the repo root: postgres + auth-service on :8080
+cd auth-service
+go test -tags=e2e -v ./tests/...             # BASE_URL defaults to http://localhost:8080
+docker compose --profile e2e down -v         # tear down when done (from the repo root)
+```
+
+See [`tests/README.md`](tests/README.md) for details.
+
+## CI
+
+On every pull request to `master` that touches `auth-service/` (or
+`docker-compose.yml`), the `auth-pipeline` in
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs **sequentially**
+(fail-fast — each stage gates the next). Stages 1–3 map to the local commands
+above:
+
+1. **lint** — `golangci-lint` (v2, standard set).
+2. **unit tests** — `go test` + `go-test-coverage`; fails if `./src` coverage < 90%.
+3. **e2e** — `docker compose --profile e2e up` + the tagged suite.
+4. **trivy** — filesystem scan (vuln + secret + misconfig), fails on CRITICAL/HIGH.
 
 ## Endpoints
 
@@ -133,15 +196,24 @@ curl -b cookies.txt -s -X POST http://localhost:8080/auth/signout
 auth-service/
 ├── go.mod
 ├── .example.env                  # committed env template (copy to .env)
-├── setting/                      # typed, validated service configuration
-│   └── setting.go                # Setting struct, Load(), resolveSecret() (caarlos0/env)
+├── Dockerfile                    # multi-stage build → distroless (used by e2e + prod)
+├── .dockerignore
+├── .testcoverage.yml             # go-test-coverage config: ≥90% gate on ./src
 ├── migrations/                   # plain-SQL schema (applied externally)
 │   ├── 0001_init_limen.up.sql
 │   └── 0001_init_limen.down.sql
-├── core/                         # shared, reusable building blocks
-│   └── module.go                 # Module interface + RegisterModules(api, ...)
+├── tests/                        # black-box e2e suites (build tag: e2e)
+│   ├── harness.go                # shared harness: HTTP client + /health readiness
+│   ├── README.md
+│   └── modules/                  # one suite per service module
+│       ├── auth/                 # auth_e2e_test.go
+│       └── health/               # health_e2e_test.go
 └── src/
     ├── main.go                   # boots the server, calls setting.Load(), registers modules
+    ├── core/                     # shared, reusable building blocks
+    │   └── module.go             # Module interface + RegisterModules(api, ...)
+    ├── setting/                  # typed, validated service configuration
+    │   └── setting.go            # Setting struct, Load(), resolveSecret() (caarlos0/env)
     └── modules/
         ├── health/               # health-check module
         │   ├── health.dto.go
@@ -150,9 +222,9 @@ auth-service/
         └── auth/                 # authentication module (limen-backed)
             ├── auth.dto.go
             ├── auth.controller.go
-            ├── auth.limen.go     # LimenConfig, LimenModule.New — opens Postgres, wires limen (GORM adapter)
+            ├── auth.limen.go     # LimenConfig, LimenModule.New (opens Postgres) + newLimen wiring — e2e-covered
             ├── auth.module.go    # Config, auth.New(cfg) — delegates to LimenModule.New
-            ├── export_test.go    # NewWithDB test seam (SQLite in tests)
+            ├── export_test.go    # NewWithDB / NewWithHandler test seams
             └── testdata/
                 └── limen_schema_sqlite.sql  # SQLite schema for tests
 ```
@@ -177,10 +249,12 @@ The service is organized around **feature modules**. Each module lives under
   returns a typed `setting.Setting` struct. Called once at startup before any
   module is initialised.
 
-- **`auth.New(cfg auth.Config)`** — delegates to `LimenModule.New`, which opens
-  Postgres (with a 5-second ping deadline to fail fast on bad credentials) and
-  wraps the connection with limen's official GORM adapter (`gormadapter.New(db)`)
-  via the internal `newLimen` builder to construct the limen instance.
+- **`auth.New(cfg auth.Config)`** — delegates to `LimenModule.New`
+  (`auth.limen.go`), which opens Postgres (with a 5-second ping deadline to fail
+  fast on bad credentials) and then calls the internal `newLimen` builder to
+  wrap the connection with limen's official GORM adapter (`gormadapter.New(db)`)
+  and construct the limen instance. This integration layer requires a live
+  database, so it is exercised by the e2e suite rather than unit tests.
 
 ### Migrations
 

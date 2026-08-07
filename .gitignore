@@ -6,3 +6,7 @@
 
 # limen CLI schema dump
 .limen/
+
+# Go coverage output (see auth-service/.testcoverage.yml)
+cover.out
+coverage.out

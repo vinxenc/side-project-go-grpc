@@ -1,0 +1,11 @@
+# Keep the build context small and deterministic. Only go.mod/go.sum and the
+# server source packages under src/ are needed to build the binary.
+tests/
+migrations/
+*.md
+.env
+.example.env
+.golangci.yml
+.testcoverage.yml
+cover.out
+coverage.out

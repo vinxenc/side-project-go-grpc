@@ -1,0 +1,153 @@
+name: CI
+
+# Runs on every pull request targeting master. Individual service pipelines are
+# gated behind path filters so a PR only pays for the pipelines it touches.
+on:
+  pull_request:
+    branches: [master]
+
+# Cancel superseded runs for the same PR to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # dorny/paths-filter reads changed files for pull_request events; grant the
+  # least-privilege read scope it documents so the `changes` job is robust.
+  pull-requests: read
+
+jobs:
+  # Detect which service folders changed so downstream pipelines can opt in.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      auth-service: ${{ steps.filter.outputs.auth-service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            auth-service:
+              - 'auth-service/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'docker-compose.yml'
+              - '.github/workflows/ci.yml'
+
+  # auth-pipeline runs sequentially: lint -> unit tests -> e2e -> trivy. Each
+  # stage depends on the previous one so a failure stops the pipeline early
+  # (fail fast) and the jobs never run in parallel. Every stage also depends on
+  # `changes` so it can read the path-filter output and be skipped when
+  # auth-service did not change.
+  auth-lint:
+    name: auth-pipeline / lint
+    needs: changes
+    if: needs.changes.outputs.auth-service == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: auth-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: auth-service/go.mod
+          cache-dependency-path: auth-service/go.sum
+      - name: golangci-lint
+        # v7 is required for golangci-lint v2 (the repo's .golangci.yml is v2).
+        uses: golangci/golangci-lint-action@v7
+        with:
+          # Must be built with Go >= the go.mod language version (1.26); older
+          # releases (e.g. v2.1.0, built with Go 1.24) refuse to run.
+          version: v2.12.2
+          working-directory: auth-service
+
+  auth-unittest:
+    name: auth-pipeline / unit tests
+    needs: [changes, auth-lint]
+    if: needs.changes.outputs.auth-service == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: auth-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: auth-service/go.mod
+          cache-dependency-path: auth-service/go.sum
+      - name: Download dependencies
+        run: go mod download
+      - name: Run unit tests (coverage profile for ./src)
+        # -coverpkg attributes cross-package coverage (e.g. health tests covering
+        # core) so the profile reflects the whole ./src surface.
+        run: go test -race -covermode=atomic -coverpkg=./src/... -coverprofile=cover.out ./src/...
+      - name: Check src coverage (>= 90%)
+        # Gate via vladopajic/go-test-coverage; scope + exclusions (main entrypoint,
+        # e2e-covered limen/Postgres layer) live in .testcoverage.yml.
+        run: go run github.com/vladopajic/go-test-coverage/v2@v2.19.0 --config=.testcoverage.yml
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-service-coverage
+          path: auth-service/cover.out
+          if-no-files-found: ignore
+
+  # Black-box end-to-end tests: bring the full stack up with docker-compose
+  # (Postgres + the auth-service container built from auth-service/Dockerfile),
+  # then drive the real HTTP API over the published port. The suite is guarded
+  # by the "e2e" build tag so it is excluded from the DB-free unit run above.
+  auth-e2e:
+    name: auth-pipeline / e2e
+    needs: [changes, auth-unittest]
+    if: needs.changes.outputs.auth-service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: auth-service/go.mod
+          cache-dependency-path: auth-service/go.sum
+      - name: Start stack (postgres + auth-service)
+        # Postgres applies migrations/ on init; the auth-service container waits
+        # for it via depends_on: service_healthy. The e2e suite then polls
+        # /health before running, so no extra readiness gate is needed here.
+        run: docker compose --profile e2e up -d --build
+      - name: Run e2e tests
+        working-directory: auth-service
+        env:
+          BASE_URL: http://localhost:8080
+        run: go test -tags=e2e -v ./tests/...
+      - name: auth-service logs
+        # Surface container logs for debugging whether the suite passed or not.
+        if: always()
+        run: docker compose --profile e2e logs auth-service
+      - name: Tear down stack
+        if: always()
+        run: docker compose --profile e2e down -v
+
+  auth-trivy:
+    name: auth-pipeline / trivy scan
+    needs: [changes, auth-e2e]
+    if: needs.changes.outputs.auth-service == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy filesystem scan
+        # v0.36.0 pins setup-trivy by immutable SHA (v0.2.6); older releases
+        # pinned setup-trivy tags that have since been deleted and fail to
+        # resolve.
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: auth-service
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
