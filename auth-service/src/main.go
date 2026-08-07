@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"auth-service/configs"
 	"auth-service/core"
+	"auth-service/setting"
 	"auth-service/src/modules/auth"
 	"auth-service/src/modules/health"
 
@@ -21,8 +21,8 @@ import (
 
 func main() {
 	// Load and validate configuration (.env + env vars). Fails fast on missing
-	// DATABASE_URL, bad LIMEN_SECRET, etc. godotenv.Load is called inside configs.Load.
-	cfg, err := configs.Load()
+	// DATABASE_URL, bad LIMEN_SECRET, etc. godotenv.Load is called inside setting.Load.
+	cfg, err := setting.Load()
 	if err != nil {
 		log.Fatalf("config load failed: %v", err)
 	}
@@ -53,8 +53,13 @@ func main() {
 	api := humago.New(mux, config)
 
 	// Build the auth module; fail fast if limen cannot initialise (e.g. unreachable
-	// DB, bad secret). auth.New opens Postgres and pings within 5 seconds.
-	authModule, err := auth.New(cfg)
+	// DB, bad secret). auth.New delegates to LimenModule.New, which opens Postgres
+	// and pings within 5 seconds.
+	authModule, err := auth.New(auth.Config{
+		DatabaseURL: cfg.DatabaseURL,
+		Secret:      cfg.Secret,
+		BaseURL:     cfg.BaseURL,
+	})
 	if err != nil {
 		log.Fatalf("auth module init failed: %v", err)
 	}

@@ -58,9 +58,9 @@ is idempotent and safe to run on every deployment.
 | `AUTH_ALLOW_DEV_SECRET` | No | `false` | Local-dev only. When `true`, permits the built-in insecure dev secret if `LIMEN_SECRET` is unset. Never set outside local dev. |
 | `AUTH_BASE_URL` | No | `http://localhost:8080` | Base URL used for cookies and links. |
 
-Configuration is loaded by `configs.Load()` (package `auth-service/configs`),
-which calls `godotenv.Load()` then validates all required fields before the
-service starts.
+Configuration is loaded by `setting.Load()` (package `auth-service/setting`),
+which calls `godotenv.Load()` then validates all required fields via
+`github.com/caarlos0/env` before the service starts.
 
 ## Build
 
@@ -133,15 +133,15 @@ curl -b cookies.txt -s -X POST http://localhost:8080/auth/signout
 auth-service/
 ├── go.mod
 ├── .example.env                  # committed env template (copy to .env)
-├── configs/                      # typed, validated service configuration
-│   └── env.go                    # Env struct, Load(), resolveSecret()
+├── setting/                      # typed, validated service configuration
+│   └── setting.go                # Setting struct, Load(), resolveSecret() (caarlos0/env)
 ├── migrations/                   # plain-SQL schema (applied externally)
 │   ├── 0001_init_limen.up.sql
 │   └── 0001_init_limen.down.sql
 ├── core/                         # shared, reusable building blocks
 │   └── module.go                 # Module interface + RegisterModules(api, ...)
 └── src/
-    ├── main.go                   # boots the server, calls configs.Load(), registers modules
+    ├── main.go                   # boots the server, calls setting.Load(), registers modules
     └── modules/
         ├── health/               # health-check module
         │   ├── health.dto.go
@@ -150,8 +150,8 @@ auth-service/
         └── auth/                 # authentication module (limen-backed)
             ├── auth.dto.go
             ├── auth.controller.go
-            ├── auth.limen.go     # newModule — builds limen via official GORM adapter
-            ├── auth.module.go    # New(cfg) — opens Postgres, pings, calls newModule
+            ├── auth.limen.go     # LimenConfig, LimenModule.New — opens Postgres, wires limen (GORM adapter)
+            ├── auth.module.go    # Config, auth.New(cfg) — delegates to LimenModule.New
             ├── export_test.go    # NewWithDB test seam (SQLite in tests)
             └── testdata/
                 └── limen_schema_sqlite.sql  # SQLite schema for tests
@@ -173,14 +173,14 @@ The service is organized around **feature modules**. Each module lives under
 - **`core.RegisterModules(api huma.API, ...)`** — wires a list of modules onto
   the huma API.
 
-- **`configs.Load()`** — validates all required environment variables and
-  returns a typed `configs.Env` struct. Called once at startup before any
+- **`setting.Load()`** — validates all required environment variables and
+  returns a typed `setting.Setting` struct. Called once at startup before any
   module is initialised.
 
-- **`auth.New(cfg configs.Env)`** — opens Postgres (with a 5-second ping
-  deadline to fail fast on bad credentials), then delegates to the internal
-  `newModule` builder which wraps the connection with limen's official GORM
-  adapter (`gormadapter.New(db)`) and builds the limen instance.
+- **`auth.New(cfg auth.Config)`** — delegates to `LimenModule.New`, which opens
+  Postgres (with a 5-second ping deadline to fail fast on bad credentials) and
+  wraps the connection with limen's official GORM adapter (`gormadapter.New(db)`)
+  via the internal `newLimen` builder to construct the limen instance.
 
 ### Migrations
 

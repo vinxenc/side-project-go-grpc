@@ -3,6 +3,7 @@ module auth-service
 go 1.26.4
 
 require (
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/danielgtaylor/huma/v2 v2.39.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/joho/godotenv v1.5.1
