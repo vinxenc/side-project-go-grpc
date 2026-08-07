@@ -3,8 +3,8 @@ package auth
 import "auth-service/core"
 
 // Config holds the inputs required to construct the auth module. It is the auth
-// package's own contract, decoupled from the configs package; main.go maps
-// configs.Setting onto it.
+// package's own contract, decoupled from the setting package; main.go maps
+// setting.Setting onto it.
 type Config struct {
 	DatabaseURL string // Postgres DSN/URL
 	Secret      []byte // 32-byte signing secret

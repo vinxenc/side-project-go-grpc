@@ -1,8 +1,8 @@
-// Package configs provides typed, validated configuration for auth-service.
+// Package setting provides typed, validated configuration for auth-service.
 // It reads the .env file (best-effort) and environment variables, validates all
 // required fields, and returns a Setting value that callers can trust is safe
 // to use.
-package configs
+package setting
 
 import (
 	"fmt"
