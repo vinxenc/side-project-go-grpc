@@ -1,6 +1,6 @@
 package health
 
-import "auth-service/core"
+import "auth-service/src/core"
 
 // Module is the health-check module.
 type Module struct {

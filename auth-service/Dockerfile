@@ -11,9 +11,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Build the server (main package lives at ./src).
-COPY core ./core
-COPY setting ./setting
+# Build the server. The main package and all its dependencies (core, setting,
+# modules) live under ./src.
 COPY src ./src
 RUN go build -trimpath -ldflags="-s -w" -o /out/auth-service ./src
 
