@@ -22,5 +22,8 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/auth-service ./src
 # statically linked (CGO disabled), so the static base is sufficient.
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/auth-service /auth-service
+# The :nonroot image already defaults to uid 65532, but declare USER explicitly
+# so static scanners (Trivy DS-0002) can confirm the container is non-root.
+USER nonroot:nonroot
 EXPOSE 8080
 ENTRYPOINT ["/auth-service"]
