@@ -9,20 +9,15 @@ import (
 
 	"auth-service/src/core"
 	"auth-service/src/modules/health"
-
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
-// setupHealthAPI wires the health module onto a fresh Huma API + mux, mirroring
-// the production configuration (CreateHooks disabled so the payload stays
-// {"status","time"}).
+// setupHealthAPI wires the health module onto a fresh Huma API + mux built with
+// the production configuration (core.NewAPI), so the payload stays
+// {"status","time"}.
 func setupHealthAPI(t *testing.T) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	cfg := huma.DefaultConfig("auth-service", "1.0.0")
-	cfg.CreateHooks = nil
-	api := humago.New(mux, cfg)
+	api := core.NewAPI(mux)
 
 	module := health.New()
 	if module.Controller() == nil {
