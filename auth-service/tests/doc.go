@@ -1,11 +1,13 @@
 // Package tests holds the end-to-end (e2e) test suite for auth-service.
 //
-// The e2e tests exercise the real production wiring — auth.New opening a live
-// Postgres connection, the full Huma/net-http stack, and a real HTTP client
-// with a cookie jar driving multi-step user journeys over a socket. They are
-// therefore guarded by the "e2e" build tag and require a running Postgres:
+// The e2e tests are black-box: the auth-service runs as a real container backed
+// by a live Postgres (docker-compose.yml, profile "e2e"), and the suite drives
+// its HTTP API over the network with a real client + cookie jar, exercising
+// multi-step user journeys exactly as a client would. They are therefore
+// guarded by the "e2e" build tag and require the stack to be up:
 //
-//	go test -tags=e2e ./tests/...
+//	docker compose --profile e2e up -d --build   # from the repo root
+//	go test -tags=e2e ./tests/...                # BASE_URL defaults to :8080
 //
 // Without the tag the suite is excluded, so the DB-free unit run
 // (`go test ./...`) is unaffected. This file carries no build constraint so the

@@ -1,10 +1,14 @@
 # auth-service e2e tests
 
-End-to-end tests that drive the real HTTP API (`health` + `auth` modules) over a
-loopback socket against a **live Postgres**, using the production `auth.New`
-wiring. A real `http.Client` with a cookie jar carries the `limen_session`
-cookie across requests, so multi-step journeys (sign up → me → sessions → sign
+Black-box end-to-end tests. The auth-service runs as a **real container**
+(built from [`../Dockerfile`](../Dockerfile)) backed by a **live Postgres**, and
+the suite drives its HTTP API over the published port with a real `http.Client`
+and cookie jar. The `limen_session` cookie set on sign-up/sign-in flows across
+requests automatically, so multi-step journeys (sign up → me → sessions → sign
 out, sign in, change password, …) are exercised exactly as a client would.
+
+The suite itself starts no server and touches no database directly — it is a
+pure HTTP client. Compose owns the stack; Postgres applies the schema on init.
 
 These differ from the handler-level unit tests under `src/modules/auth`, which
 use an in-memory SQLite database and need no external services.
@@ -17,26 +21,31 @@ always has one buildable file.
 
 ## Running locally
 
-Start Postgres (from the repo root) and run the tagged suite:
+Bring the full stack up (from the repo root), then run the tagged suite:
 
 ```bash
-docker compose up -d          # Postgres on localhost:5432 (see docker-compose.yml)
+docker compose --profile e2e up -d --build   # postgres + auth-service on :8080
 cd auth-service
 go test -tags=e2e -v ./tests/...
+docker compose --profile e2e down -v         # tear down when done
 ```
 
-The suite applies `migrations/0001_init_limen.up.sql` itself (idempotent) and
-boots the server in-process — no manual schema step required.
+The plain `docker compose up -d` (no profile) still starts **Postgres only**,
+as documented in the top-level README — the app container is gated behind the
+`e2e` profile so local dev is unaffected.
 
 ## Configuration
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `postgres://auth:auth@localhost:5432/authdb?sslmode=disable` | Postgres DSN the server and migrator connect to. |
-| `AUTH_MIGRATIONS_PATH` | `../migrations/0001_init_limen.up.sql` | Schema file applied before the suite runs. |
+| `BASE_URL` | `http://localhost:8080` | Origin of the running auth-service the suite drives. |
+
+`TestMain` polls `GET /health` until the service is ready (up to ~90s) before
+running any test, so it tolerates a container that is still starting.
 
 ## CI
 
 The `auth-pipeline / e2e` job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
-runs this suite against a `postgres:16-alpine` service container on every PR to
-`master` that touches `auth-service/`.
+runs `docker compose --profile e2e up -d --build`, executes this suite against
+the container, prints the container logs, and tears the stack down — on every PR
+to `master` that touches `auth-service/` (or `docker-compose.yml`).

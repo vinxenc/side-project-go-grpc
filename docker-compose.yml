@@ -20,5 +20,29 @@ services:
       timeout: 5s
       retries: 5
 
+  # auth-service runs only under the "e2e" profile so the default
+  # `docker compose up -d` still starts Postgres alone (as the README
+  # documents). Bring the full stack up for black-box e2e with:
+  #   docker compose --profile e2e up -d --build
+  auth-service:
+    profiles: ["e2e"]
+    build:
+      context: ./auth-service
+    container_name: auth-service
+    depends_on:
+      postgres:
+        # Wait until Postgres is healthy — its init step applies the schema in
+        # ./auth-service/migrations before accepting connections.
+        condition: service_healthy
+    environment:
+      # Inside the compose network Postgres is reachable by service name.
+      DATABASE_URL: postgres://${POSTGRES_USER:-auth}:${POSTGRES_PASSWORD:-auth}@postgres:5432/${POSTGRES_DB:-authdb}?sslmode=disable
+      # Publicly known 32-byte dev key (from .example.env) — test use only.
+      LIMEN_SECRET: "0123456789abcdef0123456789abcdef"
+      AUTH_BASE_URL: http://localhost:8080
+    ports:
+      # Exposed on loopback so the e2e client (host/runner) can reach the API.
+      - "127.0.0.1:8080:8080"
+
 volumes:
   pgdata: {}
