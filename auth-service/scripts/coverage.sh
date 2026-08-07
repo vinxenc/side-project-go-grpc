@@ -4,7 +4,7 @@
 # Scope (what "coverage for src" means here):
 #   - Instruments every package under ./src EXCEPT the `main` package
 #     (auth-service/src) — main() is the process entrypoint/wiring.
-#   - Additionally drops the Postgres connection bootstrap (auth.postgres.go)
+#   - Additionally drops the limen/Postgres integration layer (auth.limen.go)
 #     from the profile: it opens a real database, so its connection-setup/ping
 #     paths are covered by the e2e suite (tests/), not unit tests.
 #
@@ -22,9 +22,9 @@ pkgs="$(go list ./src/... | grep -v '/src$' | paste -sd, -)"
 # Run unit tests, measuring coverage across the selected packages.
 go test -race -covermode=atomic -coverpkg="$pkgs" -coverprofile="$PROFILE.raw" ./src/...
 
-# Exclude the Postgres bootstrap (e2e-covered) from the reported profile.
+# Exclude the limen/Postgres integration layer (e2e-covered) from the report.
 head -1 "$PROFILE.raw" >"$PROFILE"
-grep -v 'auth-service/src/modules/auth/auth.postgres.go' "$PROFILE.raw" | tail -n +2 >>"$PROFILE"
+grep -v 'auth-service/src/modules/auth/auth.limen.go' "$PROFILE.raw" | tail -n +2 >>"$PROFILE"
 rm -f "$PROFILE.raw"
 
 # Report per-function and the total.

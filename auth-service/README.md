@@ -95,7 +95,7 @@ cd auth-service
 
 The report intentionally scopes to `./src` and excludes two things that unit
 tests cannot meaningfully cover: the `main` entrypoint (`src/main.go`) and the
-Postgres connection bootstrap (`src/modules/auth/auth.postgres.go`, which opens
+limen/Postgres integration layer (`src/modules/auth/auth.limen.go`, which opens
 a real database and is covered by the e2e suite instead).
 
 ### End-to-end tests (real stack)
@@ -205,8 +205,7 @@ auth-service/
         └── auth/                 # authentication module (limen-backed)
             ├── auth.dto.go
             ├── auth.controller.go
-            ├── auth.postgres.go  # LimenConfig, LimenModule.New — opens Postgres (e2e-covered)
-            ├── auth.limen.go     # newLimen — pure limen wiring via GORM adapter (unit-tested)
+            ├── auth.limen.go     # LimenConfig, LimenModule.New (opens Postgres) + newLimen wiring — e2e-covered
             ├── auth.module.go    # Config, auth.New(cfg) — delegates to LimenModule.New
             ├── export_test.go    # NewWithDB / NewWithHandler test seams
             └── testdata/
@@ -234,11 +233,11 @@ The service is organized around **feature modules**. Each module lives under
   module is initialised.
 
 - **`auth.New(cfg auth.Config)`** — delegates to `LimenModule.New`
-  (`auth.postgres.go`), which opens Postgres (with a 5-second ping deadline to
-  fail fast on bad credentials) and then calls the internal `newLimen` builder
-  (`auth.limen.go`) to wrap the connection with limen's official GORM adapter
-  (`gormadapter.New(db)`) and construct the limen instance. The split keeps the
-  DB-opening bootstrap (e2e-covered) separate from the pure, unit-tested wiring.
+  (`auth.limen.go`), which opens Postgres (with a 5-second ping deadline to fail
+  fast on bad credentials) and then calls the internal `newLimen` builder to
+  wrap the connection with limen's official GORM adapter (`gormadapter.New(db)`)
+  and construct the limen instance. This integration layer requires a live
+  database, so it is exercised by the e2e suite rather than unit tests.
 
 ### Migrations
 
