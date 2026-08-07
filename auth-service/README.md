@@ -57,6 +57,7 @@ is idempotent and safe to run on every deployment.
 | `LIMEN_SECRET` | Yes* | — | Signing secret — must be exactly 32 bytes. *Startup **fails closed** if unset unless `ALLOW_DEV_SECRET=true`. |
 | `ALLOW_DEV_SECRET` | No | `false` | Local-dev only. When `true`, permits the built-in insecure dev secret if `LIMEN_SECRET` is unset. Never set outside local dev. |
 | `BASE_URL` | No | `http://localhost:8080` | Base URL used for cookies and links. |
+| `ADDR` | No | `:8080` | TCP address the HTTP server binds to. `:8080` listens on all interfaces; use `host:port` (e.g. `127.0.0.1:8080`) to bind a specific interface. |
 
 Configuration is loaded by `setting.Load()` (package `auth-service/src/setting`),
 which calls `godotenv.Load()` then validates all required fields via

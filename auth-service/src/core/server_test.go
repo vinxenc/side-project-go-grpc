@@ -112,18 +112,24 @@ func TestServe_ReturnsModuleCloseError(t *testing.T) {
 }
 
 // TestServe_ReturnsListenError verifies that a ListenAndServe bind failure is
-// returned immediately, before any shutdown is requested (ctx stays live).
+// returned immediately, before any shutdown is requested (ctx stays live), and
+// that modules are NOT closed — startup never opened them, so shutdown must not
+// run on this path.
 func TestServe_ReturnsListenError(t *testing.T) {
 	// Port 70000 is outside the valid 0–65535 range, so the bind fails.
 	srv := &http.Server{Addr: "127.0.0.1:70000"}
+	mod := &closerModule{}
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- core.Serve(context.Background(), srv) }()
+	go func() { errCh <- core.Serve(context.Background(), srv, mod) }()
 
 	select {
 	case err := <-errCh:
 		if err == nil {
 			t.Fatal("expected Serve to return the ListenAndServe bind error")
+		}
+		if mod.closed {
+			t.Error("expected modules not to be closed on a ListenAndServe bind failure")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Serve did not return the bind error")

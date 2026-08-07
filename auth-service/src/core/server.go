@@ -63,8 +63,9 @@ func listen(srv *http.Server) <-chan error {
 
 // shutdown drains in-flight HTTP requests (up to shutdownTimeout) and then
 // releases module-owned resources — in that order, so no request is cut off
-// from its database mid-flight. It returns the shutdown error if draining
-// failed, otherwise any module close error.
+// from its database mid-flight. It returns the drain error and every module
+// close error joined, so a caller can detect any failure with errors.Is (nil
+// when both steps succeed).
 func shutdown(srv *http.Server, modules []Module) error {
 	log.Println("shutting down auth-service...")
 
@@ -75,9 +76,7 @@ func shutdown(srv *http.Server, modules []Module) error {
 	if err != nil {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
-	if cerr := closeModules(modules); err == nil {
-		err = cerr
-	}
+	err = errors.Join(err, closeModules(modules))
 
 	log.Println("auth-service stopped")
 	return err
