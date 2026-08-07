@@ -39,7 +39,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-auth}:${POSTGRES_PASSWORD:-auth}@postgres:5432/${POSTGRES_DB:-authdb}?sslmode=disable
       # Publicly known 32-byte dev key (from .example.env) — test use only.
       LIMEN_SECRET: "0123456789abcdef0123456789abcdef"
-      AUTH_BASE_URL: http://localhost:8080
+      BASE_URL: http://localhost:8080
     ports:
       # Exposed on loopback so the e2e client (host/runner) can reach the API.
       - "127.0.0.1:8080:8080"

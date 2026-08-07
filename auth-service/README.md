@@ -54,9 +54,9 @@ is idempotent and safe to run on every deployment.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | **Yes** | — | Postgres DSN (`postgres://user:pass@host:port/db?sslmode=disable`). **No in-memory fallback**; startup fails fast if unset. |
-| `LIMEN_SECRET` | Yes* | — | Signing secret — must be exactly 32 bytes. *Startup **fails closed** if unset unless `AUTH_ALLOW_DEV_SECRET=true`. |
-| `AUTH_ALLOW_DEV_SECRET` | No | `false` | Local-dev only. When `true`, permits the built-in insecure dev secret if `LIMEN_SECRET` is unset. Never set outside local dev. |
-| `AUTH_BASE_URL` | No | `http://localhost:8080` | Base URL used for cookies and links. |
+| `LIMEN_SECRET` | Yes* | — | Signing secret — must be exactly 32 bytes. *Startup **fails closed** if unset unless `ALLOW_DEV_SECRET=true`. |
+| `ALLOW_DEV_SECRET` | No | `false` | Local-dev only. When `true`, permits the built-in insecure dev secret if `LIMEN_SECRET` is unset. Never set outside local dev. |
+| `BASE_URL` | No | `http://localhost:8080` | Base URL used for cookies and links. |
 
 Configuration is loaded by `setting.Load()` (package `auth-service/src/setting`),
 which calls `godotenv.Load()` then validates all required fields via

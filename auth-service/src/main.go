@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -11,9 +10,9 @@ import (
 	"time"
 
 	"auth-service/src/core"
-	"auth-service/src/setting"
 	"auth-service/src/modules/auth"
 	"auth-service/src/modules/health"
+	"auth-service/src/setting"
 )
 
 func main() {
@@ -31,46 +30,35 @@ func main() {
 	// configuration lives in core.NewAPI so production and tests share it.
 	api := core.NewAPI(mux)
 
-	// Register all feature modules. auth.New opens Postgres and wires limen; if
-	// that fails it logs the cause and registers no auth routes (the service
-	// still starts).
-	core.RegisterModules(api,
+	// Build the feature modules once, then both register their routes and hand
+	// them to core.Serve so their resources (e.g. the auth Postgres pool) are
+	// closed on shutdown. auth.New opens Postgres and wires limen; if that fails
+	// it logs the cause and registers no auth routes (the service still starts).
+	modules := []core.Module{
 		health.New(),
 		auth.New(auth.Config{
 			DatabaseURL: cfg.DatabaseURL,
 			Secret:      cfg.Secret,
 			BaseURL:     cfg.BaseURL,
 		}),
-	)
+	}
+	core.RegisterModules(api, modules...)
 
-	addr := ":8080"
-	log.Printf("OpenAPI docs available at http://localhost%s/docs", addr)
+	log.Printf("OpenAPI docs available at %s/docs", cfg.BaseURL)
 	srv := &http.Server{
-		Addr:         addr,
+		Addr:         cfg.Addr,
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
-	// Start the server in the background so main can wait for a shutdown signal.
-	go func() {
-		log.Printf("auth-service listening on %s", addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server error: %v", err)
-		}
-	}()
+	// Cancel the context on interrupt or terminate; core.Serve treats that as a
+	// graceful-shutdown request. stop() restores default signal handling so a
+	// second Ctrl-C during shutdown terminates immediately.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	// Block until an interrupt or terminate signal is received.
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
-
-	// Gracefully shut down, allowing in-flight requests to finish.
-	log.Println("shutting down auth-service...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("graceful shutdown failed: %v", err)
+	if err := core.Serve(ctx, srv, modules...); err != nil {
+		log.Fatalf("server error: %v", err)
 	}
-	log.Println("auth-service stopped")
 }

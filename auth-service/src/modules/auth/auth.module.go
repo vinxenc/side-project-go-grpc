@@ -16,6 +16,21 @@ type Config struct {
 // (production) or NewWithDB (tests).
 type Module struct {
 	controller *controller
+	// closeFn releases the module's resources (the Postgres connection pool
+	// opened by LimenModule.New). It is nil for a route-less module (failed
+	// init) or a handler-injected test module, which own no resources.
+	closeFn func() error
+}
+
+// Close releases the resources the module owns — the database connection pool
+// wired by newLimen — so graceful shutdown does not leak connections. It
+// satisfies io.Closer, which core.Serve invokes after HTTP has drained. Close
+// is a no-op (returns nil) for a module that owns no resources.
+func (m *Module) Close() error {
+	if m.closeFn == nil {
+		return nil
+	}
+	return m.closeFn()
 }
 
 // New constructs the auth module from cfg by delegating to the limen layer

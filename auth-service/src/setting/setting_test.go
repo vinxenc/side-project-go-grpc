@@ -13,7 +13,7 @@ func TestLoad_ReadsDotEnvFile(t *testing.T) {
 	dir := t.TempDir()
 	env := "DATABASE_URL=postgres://u:p@localhost:5432/db?sslmode=disable\n" +
 		"LIMEN_SECRET=0123456789abcdef0123456789abcdef\n" +
-		"AUTH_BASE_URL=https://from-dotenv.example.com\n"
+		"BASE_URL=https://from-dotenv.example.com\n"
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(env), 0o600); err != nil {
 		t.Fatalf("write .env: %v", err)
 	}
@@ -39,11 +39,12 @@ func TestLoad_ReadsDotEnvFile(t *testing.T) {
 
 // TestLoad_HappyPath verifies that Load returns a populated Env with no error
 // when DATABASE_URL and a valid 32-byte LIMEN_SECRET are set, and that BaseURL
-// defaults to http://localhost:8080 when AUTH_BASE_URL is unset.
+// and Addr fall back to their defaults when BASE_URL / ADDR are unset.
 func TestLoad_HappyPath(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
 	t.Setenv("LIMEN_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("AUTH_BASE_URL", "")
+	t.Setenv("BASE_URL", "")
+	t.Setenv("ADDR", "")
 
 	env, err := Load()
 	if err != nil {
@@ -58,13 +59,31 @@ func TestLoad_HappyPath(t *testing.T) {
 	if env.BaseURL != "http://localhost:8080" {
 		t.Errorf("BaseURL = %q, want http://localhost:8080 (default)", env.BaseURL)
 	}
+	if env.Addr != ":8080" {
+		t.Errorf("Addr = %q, want :8080 (default)", env.Addr)
+	}
 }
 
-// TestLoad_CustomBaseURL verifies that AUTH_BASE_URL overrides the default.
+// TestLoad_CustomAddr verifies that ADDR overrides the default listen address.
+func TestLoad_CustomAddr(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
+	t.Setenv("LIMEN_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("ADDR", "127.0.0.1:9090")
+
+	env, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+	if env.Addr != "127.0.0.1:9090" {
+		t.Errorf("Addr = %q, want 127.0.0.1:9090", env.Addr)
+	}
+}
+
+// TestLoad_CustomBaseURL verifies that BASE_URL overrides the default.
 func TestLoad_CustomBaseURL(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
 	t.Setenv("LIMEN_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("AUTH_BASE_URL", "https://auth.example.com")
+	t.Setenv("BASE_URL", "https://auth.example.com")
 
 	env, err := Load()
 	if err != nil {
@@ -110,11 +129,11 @@ func TestLoad_SecretTooLong(t *testing.T) {
 }
 
 // TestLoad_UnsetSecret_FailClosed verifies that Load returns an error when
-// LIMEN_SECRET is unset and AUTH_ALLOW_DEV_SECRET is not "true" (CWE-798 guard).
+// LIMEN_SECRET is unset and ALLOW_DEV_SECRET is not "true" (CWE-798 guard).
 func TestLoad_UnsetSecret_FailClosed(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db")
 	t.Setenv("LIMEN_SECRET", "")
-	t.Setenv("AUTH_ALLOW_DEV_SECRET", "") // not opted in
+	t.Setenv("ALLOW_DEV_SECRET", "") // not opted in
 
 	_, err := Load()
 	if err == nil {
@@ -122,29 +141,29 @@ func TestLoad_UnsetSecret_FailClosed(t *testing.T) {
 	}
 }
 
-// TestLoad_InvalidAllowDevSecret verifies that a non-boolean AUTH_ALLOW_DEV_SECRET
+// TestLoad_InvalidAllowDevSecret verifies that a non-boolean ALLOW_DEV_SECRET
 // fails env parsing (covering the parse-error branch of Load).
 func TestLoad_InvalidAllowDevSecret(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db")
 	t.Setenv("LIMEN_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("AUTH_ALLOW_DEV_SECRET", "not-a-bool")
+	t.Setenv("ALLOW_DEV_SECRET", "not-a-bool")
 
 	_, err := Load()
 	if err == nil {
-		t.Fatal("Load() with non-boolean AUTH_ALLOW_DEV_SECRET expected error, got nil")
+		t.Fatal("Load() with non-boolean ALLOW_DEV_SECRET expected error, got nil")
 	}
 }
 
 // TestLoad_UnsetSecret_DevOptIn verifies that Load succeeds (returning the 32-byte
-// dev secret) when LIMEN_SECRET is unset but AUTH_ALLOW_DEV_SECRET=true.
+// dev secret) when LIMEN_SECRET is unset but ALLOW_DEV_SECRET=true.
 func TestLoad_UnsetSecret_DevOptIn(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db")
 	t.Setenv("LIMEN_SECRET", "")
-	t.Setenv("AUTH_ALLOW_DEV_SECRET", "true")
+	t.Setenv("ALLOW_DEV_SECRET", "true")
 
 	env, err := Load()
 	if err != nil {
-		t.Fatalf("Load() with AUTH_ALLOW_DEV_SECRET=true expected no error, got %v", err)
+		t.Fatalf("Load() with ALLOW_DEV_SECRET=true expected no error, got %v", err)
 	}
 	if len(env.Secret) != 32 {
 		t.Errorf("Secret len = %d, want 32", len(env.Secret))
