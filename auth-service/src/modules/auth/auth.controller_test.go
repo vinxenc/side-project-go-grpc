@@ -11,17 +11,16 @@ import (
 	"strings"
 	"testing"
 
+	"auth-service/src/core"
+
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
 // setupTestAPI creates a fresh test API with the auth module installed.
 func setupTestAPI(t *testing.T) (huma.API, *http.ServeMux) {
 	t.Helper()
 	mux := http.NewServeMux()
-	cfg := huma.DefaultConfig("auth-service", "1.0.0")
-	cfg.CreateHooks = nil // Match production config
-	api := humago.New(mux, cfg)
+	api := core.NewAPI(mux)
 
 	module := newTestModule(t)
 

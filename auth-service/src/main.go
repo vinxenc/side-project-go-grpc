@@ -14,9 +14,6 @@ import (
 	"auth-service/src/setting"
 	"auth-service/src/modules/auth"
 	"auth-service/src/modules/health"
-
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
 func main() {
@@ -30,44 +27,20 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Wrap the mux with Huma. Operations are registered onto the API, but the
-	// underlying mux is what the server serves (see srv.Handler below).
-	config := huma.DefaultConfig("auth-service", "1.0.0")
-	// DefaultConfig installs a SchemaLinkTransformer via CreateHooks, which
-	// decorates response bodies with a "$schema" field and adds Link headers.
-	// Drop it to keep the health payload byte-compatible: {"status","time"}.
-	config.CreateHooks = nil
-	// Declare the cookieAuth security scheme referenced by the protected auth
-	// operations so the generated OpenAPI document is valid (an operation may
-	// only reference a scheme defined under components.securitySchemes).
-	if config.Components == nil {
-		config.Components = &huma.Components{}
-	}
-	if config.Components.SecuritySchemes == nil {
-		config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{}
-	}
-	config.Components.SecuritySchemes["cookieAuth"] = &huma.SecurityScheme{
-		Type: "apiKey",
-		In:   "cookie",
-		Name: "limen_session",
-	}
-	api := humago.New(mux, config)
+	// underlying mux is what the server serves (see srv.Handler below). The API
+	// configuration lives in core.NewAPI so production and tests share it.
+	api := core.NewAPI(mux)
 
-	// Build the auth module; fail fast if limen cannot initialise (e.g. unreachable
-	// DB, bad secret). auth.New delegates to LimenModule.New, which opens Postgres
-	// and pings within 5 seconds.
-	authModule, err := auth.New(auth.Config{
-		DatabaseURL: cfg.DatabaseURL,
-		Secret:      cfg.Secret,
-		BaseURL:     cfg.BaseURL,
-	})
-	if err != nil {
-		log.Fatalf("auth module init failed: %v", err)
-	}
-
-	// Register all feature modules.
+	// Register all feature modules. auth.New opens Postgres and wires limen; if
+	// that fails it logs the cause and registers no auth routes (the service
+	// still starts).
 	core.RegisterModules(api,
 		health.New(),
-		authModule,
+		auth.New(auth.Config{
+			DatabaseURL: cfg.DatabaseURL,
+			Secret:      cfg.Secret,
+			BaseURL:     cfg.BaseURL,
+		}),
 	)
 
 	addr := ":8080"

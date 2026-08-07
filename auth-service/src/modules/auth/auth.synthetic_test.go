@@ -6,10 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"auth-service/src/core"
 	"auth-service/src/modules/auth"
-
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
 // stubHandler is a synthetic upstream standing in for limen's http.Handler. It
@@ -31,9 +29,7 @@ func (s stubHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 func setupStubAPI(t *testing.T, h http.Handler) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	cfg := huma.DefaultConfig("auth-service", "1.0.0")
-	cfg.CreateHooks = nil
-	api := humago.New(mux, cfg)
+	api := core.NewAPI(mux)
 	auth.NewWithHandler(h).Controller().RegisterRoutes(api)
 	return mux
 }

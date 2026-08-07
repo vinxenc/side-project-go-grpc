@@ -19,16 +19,23 @@ type Module struct {
 }
 
 // New constructs the auth module from cfg by delegating to the limen layer
-// (LimenModule.New), which opens Postgres and wires limen. The caller — main.go
-// — must handle the returned error with log.Fatalf so the service does not
-// start with a broken auth layer.
-func New(cfg Config) (*Module, error) {
+// (LimenModule.New), which opens Postgres and wires limen. It never returns an
+// error: on failure LimenModule.New logs the cause and yields a route-less
+// Module, so main.go can inline it into core.RegisterModules.
+func New(cfg Config) *Module {
 	return LimenModule.New(LimenConfig(cfg))
 }
 
 // Controller returns the controller that owns this module's routes, satisfying
 // core.Module. Route registration lives on the controller (RegisterRoutes),
 // next to the handlers it points at.
+//
+// A Module whose backend failed to build has a nil controller; this returns an
+// untyped nil interface in that case (not a non-nil interface wrapping a nil
+// *controller) so RegisterModules correctly skips it and registers no routes.
 func (m *Module) Controller() core.Controller {
+	if m.controller == nil {
+		return nil
+	}
 	return m.controller
 }
