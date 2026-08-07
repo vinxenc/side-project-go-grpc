@@ -186,11 +186,12 @@ auth-service/
 ├── migrations/                   # plain-SQL schema (applied externally)
 │   ├── 0001_init_limen.up.sql
 │   └── 0001_init_limen.down.sql
-├── tests/                        # black-box e2e suite (build tag: e2e)
-│   ├── doc.go
-│   ├── harness_test.go           # HTTP client + /health readiness wait
-│   ├── auth_e2e_test.go
-│   └── README.md
+├── tests/                        # black-box e2e suites (build tag: e2e)
+│   ├── harness.go                # shared harness: HTTP client + /health readiness
+│   ├── README.md
+│   └── modules/                  # one suite per service module
+│       ├── auth/                 # auth_e2e_test.go
+│       └── health/               # health_e2e_test.go
 └── src/
     ├── main.go                   # boots the server, calls setting.Load(), registers modules
     ├── core/                     # shared, reusable building blocks

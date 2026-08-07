@@ -13,11 +13,34 @@ pure HTTP client. Compose owns the stack; Postgres applies the schema on init.
 These differ from the handler-level unit tests under `src/modules/auth`, which
 use an in-memory SQLite database and need no external services.
 
+## Layout
+
+The suites mirror the service modules under `src/modules/`:
+
+```text
+tests/
+├── doc.go            # package docs + no-tag sentinel
+├── harness.go        # shared harness (e2e-tagged): Client, Ready, helpers
+├── README.md
+└── modules/
+    ├── auth/         # auth API e2e suite (package auth_test)
+    │   ├── doc.go
+    │   └── auth_e2e_test.go
+    └── health/       # health API e2e suite (package health_test)
+        ├── doc.go
+        └── health_e2e_test.go
+```
+
+Each module suite imports the shared harness (`auth-service/tests`) for the HTTP
+client, the readiness gate, and helpers. To add a suite for a new module, create
+`tests/modules/<name>/` with a no-tag `doc.go` and an e2e-tagged `<name>_e2e_test.go`
+whose `TestMain` calls `tests.Ready()`.
+
 ## Build tag
 
-The suite is guarded by the `e2e` build tag, so it is **excluded** from the
-DB-free unit run (`go test ./...`). `doc.go` carries no tag so the package
-always has one buildable file.
+The suites are guarded by the `e2e` build tag, so they are **excluded** from the
+DB-free unit run (`go test ./...`). Every package carries a no-tag `doc.go` so it
+always has one buildable file when the tag is absent.
 
 ## Running locally
 
@@ -40,8 +63,9 @@ as documented in the top-level README — the app container is gated behind the
 |---|---|---|
 | `BASE_URL` | `http://localhost:8080` | Origin of the running auth-service the suite drives. |
 
-`TestMain` polls `GET /health` until the service is ready (up to ~90s) before
-running any test, so it tolerates a container that is still starting.
+Each suite's `TestMain` calls `tests.Ready()`, which polls `GET /health` until
+the service is ready (up to ~90s) before running any test, so it tolerates a
+container that is still starting.
 
 ## CI
 
