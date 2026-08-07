@@ -69,11 +69,27 @@ cd auth-service
 go build ./...
 ```
 
-## Test
+## Running checks locally
 
-There are two independent test layers:
+These are the same stages the CI `auth-pipeline` runs, in the same order. Run
+them from the `auth-service/` directory unless noted otherwise. The tool
+versions below match what CI pins; the `go install`/`go run` commands don't
+modify this module's `go.mod`, and if you already have a tool installed you can
+use it directly.
 
-### Unit tests (no Postgres)
+### 1. Lint
+
+`golangci-lint` v2 with the standard linter set (config: [`.golangci.yml`](.golangci.yml)).
+Install the version CI pins (or see the [install docs](https://golangci-lint.run/welcome/install/)),
+then run it:
+
+```bash
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+cd auth-service
+golangci-lint run ./...
+```
+
+### 2. Unit tests + coverage gate
 
 Unit tests run **without Postgres** using a pure-Go in-memory SQLite database
 (no CGO, no Docker). The test seam `auth.NewWithDB(db, secret, baseURL)` in
@@ -83,25 +99,22 @@ success/error/decode branches.
 
 ```bash
 cd auth-service
+# Just run the tests:
 go test ./...
-```
 
-**Coverage** is focused on the `./src` business logic and gated at **≥ 90%**
-with [`go-test-coverage`](https://github.com/vladopajic/go-test-coverage)
-(config in [`.testcoverage.yml`](.testcoverage.yml)):
-
-```bash
-cd auth-service
+# Or run them with the coverage gate (≥ 90% on ./src), as CI does:
 go test -race -covermode=atomic -coverpkg=./src/... -coverprofile=cover.out ./src/...
 go run github.com/vladopajic/go-test-coverage/v2@v2.19.0 --config=.testcoverage.yml
 ```
 
-The config scopes the total to `./src` and excludes two things that unit tests
-cannot meaningfully cover: the `main` entrypoint (`src/main.go`) and the
-limen/Postgres integration layer (`src/modules/auth/auth.limen.go`, which opens
-a real database and is covered by the e2e suite instead).
+Coverage is enforced with [`go-test-coverage`](https://github.com/vladopajic/go-test-coverage)
+(config: [`.testcoverage.yml`](.testcoverage.yml)). It scopes the total to
+`./src` and excludes two things unit tests cannot meaningfully cover: the `main`
+entrypoint (`src/main.go`) and the limen/Postgres integration layer
+(`src/modules/auth/auth.limen.go`, which opens a real database and is covered by
+the e2e suite instead).
 
-### End-to-end tests (real stack)
+### 3. End-to-end tests (real stack)
 
 Black-box e2e tests run the service as a **real container** (built from
 `Dockerfile`) against a **live Postgres**, driving the HTTP API over the
@@ -109,10 +122,10 @@ network. They live in `tests/` and are guarded by the `e2e` build tag, so they
 are excluded from the unit run above.
 
 ```bash
-docker compose --profile e2e up -d --build   # from the repo root
+docker compose --profile e2e up -d --build   # from the repo root: postgres + auth-service on :8080
 cd auth-service
-go test -tags=e2e -v ./tests/...
-docker compose --profile e2e down -v
+go test -tags=e2e -v ./tests/...             # BASE_URL defaults to http://localhost:8080
+docker compose --profile e2e down -v         # tear down when done (from the repo root)
 ```
 
 See [`tests/README.md`](tests/README.md) for details.
@@ -122,7 +135,8 @@ See [`tests/README.md`](tests/README.md) for details.
 On every pull request to `master` that touches `auth-service/` (or
 `docker-compose.yml`), the `auth-pipeline` in
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs **sequentially**
-(fail-fast — each stage gates the next):
+(fail-fast — each stage gates the next). Stages 1–3 map to the local commands
+above:
 
 1. **lint** — `golangci-lint` (v2, standard set).
 2. **unit tests** — `go test` + `go-test-coverage`; fails if `./src` coverage < 90%.
